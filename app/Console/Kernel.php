@@ -12,7 +12,8 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule): void
     {
-        // $schedule->command('inspire')->hourly();
+        // Reconcile pending inventory reservations and compensations every minute
+        $schedule->command('inventory:reconcile')->everyMinute()->withoutOverlapping();
     }
 
     /**

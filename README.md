@@ -187,3 +187,48 @@ docker compose exec app php artisan test
 - `429 Too Many Requests`: عند تجاوز حد الطلبات المسموح (Rate Limiting).
 - `500 Internal Server Error`: رسالة عامة آمنة عند حدوث خطأ غير متوقع دون تسريب تفاصيل النظام.
 - `503 Service Unavailable`: عند توقف خدمة المخزون أو تجاوز مهلة الاستجابة (Deadline Exceeded).
+
+---
+
+## 6. إدارة اتساق المخزون الموزع والمطابقة (Distributed Saga Reconciliation & Outbox)
+
+لمعالجة سيناريوهات الفشل في الأنظمة الموزعة (Distributed Failures) عند انقطاع الاتصال أو انتهاء المهلة (gRPC Deadline Exceeded / Transport Timeout) أثناء خطوة تأكيد الحجز `ConfirmStock`، تم تطبيق نمط **Transactional Outbox / Saga Reconciliation**:
+
+### 1. آلة الحالات لعملية الحجز (Reservation Workflow States):
+- `pending_reservation`: تسجيل نية الطلب وبدء استدعاء gRPC `ReserveStock`.
+- `pending_confirmation`: تم حجز المخزون في PostgreSQL وتم حفظ الطلب في MySQL، ولكن استدعاء `ConfirmStock` واجه انقطاعاً في الشبكة أو مهلة (Transport Timeout). **لا يتم إلغاء الطلب ولا يتم تحرير المخزون**، لأن الحجز قد يكون تم تأكيده بالفعل في خدمة المخزون.
+- `confirmed`: تم تأكيد الحجز بنجاح في PostgreSQL (أو عبر المطابقة اللاحقة Idempotent Confirmation).
+- `pending_release`: رُفض التأكيد بسبب منطقي قاطع (Business Failure كـانتهاء صلاحية الحجز TTL)، أو فشلت معاملة MySQL، فيتم إلغاء الطلب في MySQL وجدولة الإجراء التعويضي `ReleaseStock`.
+- `released`: تم تحرير المخزون بنجاح واسترجاع الكميات إلى الرصيد المتاح.
+- `failed`: تجاوزت محاولات التعويض الحد الأقصى (`max_retries = 5`) وتتطلب تدخلاً إدارياً.
+
+> ⚠️ **قاعدة ذهبية (Critical Invariant)**: لا يتم أبداً تحرير حجز مؤكد (`confirmed`) كإجراء تعويضي. انقطاع الشبكة ليس دليلاً على فشل العملية عن بُعد.
+
+### 2. مفتاح فرادة الطلب للزبون (Client Idempotency-Key):
+- يدعم الـ Endpoint `POST /api/v1/orders` الترويسة `Idempotency-Key` (أو `X-Idempotency-Key`).
+- يتم حساب تجزئة مشفرة قطعية (SHA-256 Payload Hash) لبيانات الطلب.
+- في حال إعادة إرسال نفس المفتاح بنفس الحمولة (Idempotent Retry): يُعاد الطلب الأصلي نفسه دون إنشاء طلب مكرر ودون حجز مخزون مضاعف.
+- في حال إعادة استخدام المفتاح مع حمولة مختلفة: يُرفض الطلب برمز `422 Unprocessable Entity` لمنع تعارض العمليات.
+
+### 3. خادم المطابقة في الخلفية (Reconciliation Worker in Docker):
+تعمل حاوية مخصصة `beershop_reconciliation_worker` بشكل دائم كـ Daemon لمعالجة السجلات المعلقة:
+```bash
+# فحص حالة حاوية عامل المطابقة
+docker compose ps reconciliation_worker
+
+# استعراض سجلات عامل المطابقة المباشرة
+docker compose logs -f reconciliation_worker
+```
+
+### 4. فحص وإدارة سجلات المطابقة يدوياً (Inspecting Reconciliation Records):
+```bash
+# تشغيل دفعة مطابقة واحدة يدوياً
+docker compose exec app php artisan inventory:reconcile
+
+# فحص السجلات المعلقة أو الفاشلة مباشرة من MySQL
+docker compose exec db_main mysql -u beershop_user -pbeershop_password aboodm4_beershop -e "
+  SELECT id, order_ref, reservation_id, workflow_state, retry_count, next_retry_at, last_error
+  FROM inventory_reconciliations
+  ORDER BY id DESC LIMIT 10;
+"
+```
