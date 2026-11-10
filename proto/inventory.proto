@@ -1,0 +1,66 @@
+syntax = "proto3";
+
+package inventory;
+
+service InventoryService {
+  // 1. Query current stock
+  rpc GetStock (GetStockRequest) returns (GetStockResponse);
+
+  // 2. Atomic All-or-Nothing reservation with order_ref for Idempotency
+  rpc ReserveStock (ReserveStockRequest) returns (ReserveStockResponse);
+
+  // 3. Release reserved stock using reservation_id & order_ref
+  rpc ReleaseStock (ReleaseStockRequest) returns (ReleaseStockResponse);
+
+  // 4. Confirm reserved stock after successful order creation
+  rpc ConfirmStock (ConfirmStockRequest) returns (ConfirmStockResponse);
+}
+
+message StockItem {
+  int32 product_id = 1;
+  int32 quantity = 2;
+}
+
+message GetStockRequest {
+  int32 product_id = 1;
+}
+
+message GetStockResponse {
+  int32 product_id = 1;
+  int32 total_stock = 2;
+  int32 reserved_stock = 3;
+  int32 available_stock = 4;
+}
+
+message ReserveStockRequest {
+  string order_ref = 1;          // Idempotency reference
+  repeated StockItem items = 2;  // List of items (All-or-Nothing)
+  int32 ttl_seconds = 3;         // TTL for orphan reservations (e.g. 300s)
+}
+
+message ReserveStockResponse {
+  bool success = 1;
+  string reservation_id = 2;
+  string message = 3;
+  repeated int32 failed_product_ids = 4;
+}
+
+message ReleaseStockRequest {
+  string reservation_id = 1;
+  string order_ref = 2;
+}
+
+message ReleaseStockResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message ConfirmStockRequest {
+  string reservation_id = 1;
+  string order_ref = 2;
+}
+
+message ConfirmStockResponse {
+  bool success = 1;
+  string message = 2;
+}

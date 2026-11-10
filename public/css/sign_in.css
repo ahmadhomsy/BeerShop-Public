@@ -1,0 +1,150 @@
+/* Start Global Rules */
+* {
+  -webkit-box-sizing: border-box;
+  -moz-box-sizing: border-box;
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+html {
+  scroll-behavior: smooth;
+}
+body {
+  background-color: #0e0021;
+  font-family: 'Gilroy';
+}
+ul {
+  list-style: none;
+}
+.container {
+  padding-left: 15px;
+  padding-right: 15px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+@media (min-width: 768px) {
+  .container {
+      width: 750px;
+  }
+}
+
+@media (min-width: 992px) {
+  .container {
+    width: 970px;
+  }
+}
+
+@media (min-width: 1200px) {
+  .container {
+    width: 1170px;
+  }
+}
+/* End Global Rules */
+/* Start Form Section */
+.container {
+  position: relative;
+}
+.card {
+  position: relative;
+  left: 50%;
+  top: 50px;
+  transform: translateX(-50%);
+  width: 380px;
+  height: 500px;
+  background-color: white;
+  border-style: solid;
+  border-color: rgb(44 46 73);
+  border-width: 10px;
+}
+
+
+.box {
+  position: relative;
+  height: 60px;
+}
+p {
+  text-align: center;
+  font-size: 200%;
+  font-weight: bold;
+  padding: 10px;
+  color: black;
+}
+
+img {
+  width: 50px;
+  height: 50px;
+  position: absolute;
+  top: 2px;
+  left: 2px;
+}
+
+hr.h {
+}
+
+
+
+form {
+  position: relative;
+  width: 360px;
+  height: 320px;
+}
+
+.area:focus {
+  outline: none;
+}
+.area {
+  padding: 6px 10px 1px;
+  position: relative;
+	left: 70px;
+	width: 250px;
+	font-size: 17px;
+  background-color: transparent;
+  border-top-color: transparent;
+  border-right-color: transparent;
+  border-left-color: transparent;
+}
+
+label {
+  font-size: 150%;
+  font-weight: bold;
+  color: cadetblue;
+}
+
+
+/* .button {
+  background-color: #345e88;
+  font-size: 18px;
+  padding: 8px 25px;
+  border-radius: 21%;
+  position: relative;
+  margin-top: 75px;
+  left: 50%;
+  transform: translateX(-50px);
+} */
+.button {
+    background-color: #8a99a9;
+    font-size: 18px;
+    padding: 8px 25px;
+    border-radius: 4%;
+    position: absolute;
+    width: 300px;
+    margin-top: 75px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+
+.c_a {
+  position: absolute;
+  left: 235px;
+  bottom: 30px;
+  color: #381b65;
+}
+
+.f_p {
+  position: absolute;
+  left: 12px;
+  bottom: 30px;
+  color: #381b65;
+}

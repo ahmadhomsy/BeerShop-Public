@@ -1,0 +1,193 @@
+/* Start Global Rules */
+* {
+  -webkit-box-sizing: border-box;
+  -moz-box-sizing: border-box;
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+html {
+  scroll-behavior: smooth;
+}
+body {
+  background-color: #0e0021;
+  font-family: 'Gilroy';
+}
+ul {
+  list-style: none;
+}
+.container {
+  padding-left: 15px;
+  padding-right: 15px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+@media (min-width: 768px) {
+  .container {
+      width: 750px;
+  }
+}
+
+@media (min-width: 992px) {
+  .container {
+    width: 970px;
+  }
+}
+
+@media (min-width: 1200px) {
+  .container {
+    width: 1170px;
+  }
+}
+/* End Global Rules */
+/* Start Form Section */
+.container {
+  position: relative;
+}
+
+.box {
+  position: relative;
+  height: 50px;
+}
+.box p {
+  position: absolute;
+  font-size: 22px;
+  font-weight: bold;
+  display: inline;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 11px 0 9px;
+}
+
+img {
+    width: 50px;
+    height: 50px;
+    position: relative;
+    top: 2px;
+    left: 2px;
+}
+
+
+hr.h {
+  margin-top: 2px;
+  margin-bottom: 7px;
+}
+
+
+.maincomponent.a {
+  text-align: center;
+  width: 300px;
+  height: 42px;
+  margin: auto;
+  border-radius: 10px;
+  background-color: #09005c;
+}
+.maincomponent.a .slide {
+  position: relative;
+  background-color: rgb(48 36 104);
+  width: 300px;
+  height: 42px;
+  display: flex;
+  border-radius: 10px;
+}
+.maincomponent.a .slide .a {
+text-align: center;
+width: calc(300px/3);
+background-color: rgb(48 36 104);
+display: inline;
+padding: 11px;
+color: white;
+border-radius: 10px;
+}
+.maincomponent.a .slide .a.seller.active, 
+.maincomponent.a .slide .a.buyer.active, 
+.maincomponent.a .slide .a.admin.active {
+  background-color: #0c092a;
+  border-radius: 10px;
+}
+.admin, .buyer, .seller {
+  display: none;
+}
+
+.sellerComp,.adminComp,.buyerComp {
+  display: none;
+}
+
+.sellerComp.show{
+  display: block;
+}
+.buyerComp.show {
+  display: block;
+}
+.adminComp.show {
+  display: block;
+}
+.forms-cont {
+  position: relative;
+  left: 50%;
+  top: 50px;
+  transform: translateX(-50%);
+  color: rgb(48 36 104);
+  width: 380px;
+  height: 500px;
+  background-color: cadetblue;
+  border-style: solid;
+  border-color: rgb(44 46 73);
+  border-width: 10px;
+}
+
+.buyerComp,
+.adminComp,
+.sellerComp {
+  position: relative;
+}
+.buyerComp form,
+.adminComp form,
+.sellerComp form {
+  position: relative;
+  width: 340px;
+  height: 320px;
+  left: 10px;
+}
+
+
+
+.button {
+  position: relative;
+  background-color: #345e88;
+  font-size: 15px;
+  padding: 10px 30px;
+  border-radius: 10%;
+  margin-top: 15px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+
+.area:focus {
+  outline: none;
+}
+.area {
+  padding: 3px 3px 1px;
+  margin-bottom: 7px;
+  position: relative;
+  left: 5px;
+  background-color: transparent;
+  border-top-color: transparent;
+  border-right-color: transparent;
+  border-left-color: transparent;
+  font-size: 15px;
+}
+
+label {
+    font-size: 20px;
+    font-weight: bold;
+}
+
+.f_p {
+    position: relative;
+    top: 20px;
+    left: 25px;
+    color: #381b65;
+}

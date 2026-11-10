@@ -1,0 +1,94 @@
+.cashlabel {
+font-size: 18px;
+font-weight: 600;
+}
+.cashinput {
+    margin-left: 30px;
+}
+.cardlabel {
+    font-size: 18px;
+    font-weight: 600;
+}
+.cardinput {
+    margin-left: 30px;
+
+}
+
+.check {
+    margin-left: 30px;
+    background-color: gainsboro;
+    width: 200px;
+    padding: 5px;
+}
+.card-details {
+    display: flex;
+}
+.collapse {
+    position: relative;
+
+}
+.visaform {
+    position: relative;
+
+}
+label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+  }
+
+  input[type="text"] {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 16px;
+  }
+
+  input[type="text"]:focus {
+    outline: none;
+    border-color: #0066cc;
+  }
+
+  input::placeholder {
+    color: #999;
+  }
+
+  input[required] {
+    border-color: #ff0000;
+  }
+
+  input:invalid {
+    box-shadow: none;
+  }
+
+  .boxed-btn {
+    background-color: cadetblue!important;
+    text-decoration: none;
+  }
+  @media (max-width: 992px) {
+    table.order-details {
+        width: -webkit-fill-available;
+        margin-top: 50px;
+    }
+    .order-details-wrap > a {
+        margin-top: 30px;
+        display: block;
+        text-align: center;
+        font-size: 17px;
+      }
+  }
+  .order-details-wrap > a:hover {
+color: black;
+  }
+
+
+  .checkout-table {
+
+  }
+  @media (max-width: 600px) {
+
+  .checkout-table tr{
+    font-size: 10px;
+  }
+}

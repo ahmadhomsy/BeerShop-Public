@@ -1,0 +1,227 @@
+
+
+
+
+/* Start New Products Section */
+.products {
+  position: relative;
+  height: auto;
+}
+.products:first-of-type ,
+.products:nth-of-type(3),
+.products:nth-of-type(5),
+.products:nth-of-type(7),
+.products:nth-of-type(9),
+.products:last-of-type,
+.products:nth-of-type(2),
+.products:nth-of-type(4),
+.products:nth-of-type(6),
+.products:nth-of-type(8),
+.products:nth-of-type(10)  {
+  background-color: white;
+}
+
+
+.products .container{
+}
+.products p.head {
+  font-size: 30px;
+  text-align: center;
+  padding-top: 15px;
+  font-weight: bold;
+  color: cadetblue;
+  text-transform: capitalize;
+}
+.products .box-cont {
+  width: auto;
+  display: flex;
+  flex-wrap: wrap;
+  grid-gap: 5px;
+  padding-top: 10px;
+  padding-bottom: 50px;
+  justify-content: center;
+}
+.products .box-cont .box {
+  position: relative;
+  background-color: #e0e0e0;
+}
+
+
+@media (max-width: 768px) {
+  .products {
+    /*height: 325px;*/
+  }
+  .products .container{
+  }
+  .products p.head {
+    font-size: 23px;
+    text-align: center;
+    margin-top: 15px;
+    font-weight: bold;
+  }
+  .products .box-cont {
+    width: auto;
+    height: auto;
+    display: flex;
+    grid-gap: 20px;
+    padding-top: 10px;
+  }
+  .products .box-cont .box {
+    width: 325px;
+    height: 115px;
+  }
+  .products .box-cont .box img {
+    width: 112px;
+    height: 112px;
+  }
+  .products .box-cont .box p:first-of-type {
+    top: 5;
+    font-size: 17px;
+    font-weight: 600;
+    margin-left: 10px;
+  }
+  .products .box-cont .box p:nth-of-type(2) {
+    top: 26px;
+    font-size: 12px;
+    margin-left: 12px;
+    line-height: 0.9;
+  }
+  .products .box-cont .box p:nth-of-type(3) {
+    top: 62px;
+    font-size: 14px;
+    margin-left: 12px;
+  }
+  .products .box-cont .box h2 {
+    font-size: 20px;
+    padding: 2px 0;
+    color: #541c08;
+    margin-top: 5px;
+  }
+  .products .box button {
+    font-size: 13px;
+    padding: 3px 6px;
+    border-radius: 4px;
+    margin-top: 8px;
+  }
+  .products .box-cont .box h2 {
+    font-size: 16px;
+    padding: 10px 0;
+    color: #541c08;
+    display: inline-block;
+    position: absolute;
+    top: 70px;
+    margin-left: 10px;
+  }
+  .cart-btn {
+    text-decoration: none;
+    position: absolute;
+    right: 7px;
+    bottom: 4px !important;
+    padding: 4px 9px !important;
+    font-size: 12px !important;
+    background-color: cadetblue!important;
+  }
+  .cart-btn i {
+    font-size: 9px;
+    }
+}
+@media (min-width: 768px) {
+  .products .box-cont .box {
+    width: 750px;
+    height: 220px;
+  }
+  .products .box-cont .box img {
+    width: 217px;
+    height: 217px;
+  }
+  .products .box-cont .box p:first-of-type {
+    top: 24px;
+    font-size: 26px;
+    font-weight: 600;
+    margin-left: 20px;
+  }
+  .products .box-cont .box p:nth-of-type(2) {
+    top: 55px;
+    font-size: 20px;
+    margin-left: 20px;
+  }
+  .products .box-cont .box p:nth-of-type(3) {
+    display: inline-block;
+    position: absolute;
+    top: 120px;
+    font-size: 20px;
+    margin-left: 20px;
+  }
+  .products .box-cont .box h2 {
+    font-size: 22px;
+    padding: 10px 0;
+    color: #541c08;
+    display: inline-block;
+    position: absolute;
+    top: 160px;
+    margin-left: 20px;
+  }
+  .cart-btn {
+    text-decoration: none;
+    position: absolute;
+    right: 12px;
+    bottom: 10px !important;
+    padding: 7px 20px !important;
+    font-size: 16px !important;
+    background-color: cadetblue !important;
+  }
+}
+.cart-btn:hover {
+color: black!important;
+}
+@media (min-width: 992px) {
+  .products .box-cont .box {
+    width: 970px;
+  }
+}
+
+@media (min-width: 1200px) {
+  .products .box-cont .box {
+    width: 1170px;
+  }
+}
+.products .box-cont .box img {
+  position: relative;
+  left: 1px;
+  top: 1px;
+}
+.products .box-cont .box p:first-of-type {
+  display: inline-block;
+  position: absolute;
+}
+.products .box-cont .box p:nth-of-type(2) {
+  display: inline-block;
+  position: absolute;
+}
+.products .box-cont .box p:nth-of-type(3) {
+  display: inline-block;
+  position: absolute;
+}
+.products .box-cont .box p:nth-of-type(3) span {
+    font-weight: 500;
+
+}
+.products .box-cont .box h2 {
+  padding: 10px 0;
+  color: #541c08;
+  display: inline-block;
+  position: absolute;
+}
+.products .box button {
+  /* background-color: #878787; */
+  background-color: #93a6a6;
+  padding: 7px 11px;
+  border-radius: 5px;
+  position: absolute;
+    right: 50px;
+    bottom: 20px;
+  cursor: pointer;
+}
+
+
+/* End CategoryOne Products Section */

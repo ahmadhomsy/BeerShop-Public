@@ -1,0 +1,314 @@
+a.highlighted {
+    color: cadetblue !important;
+}
+
+#myChart {
+    width: 300px!important;
+    height: 230px!important;
+    display: block!important;
+    box-sizing: border-box;
+    position: relative;
+    background-color: rgb(43, 55, 77);
+    padding: 7px;
+}
+.chart {
+    position: absolute;
+    right: 10px;
+    top: 0;
+}
+.cardscont {
+    position: relative;
+    display: flex;
+
+}
+.card {
+    position: relative;
+    height: 200px!important;
+    width: 280px!important;
+    margin: 20px;
+}
+.card.f {
+    margin: 20px 20px 20px 0;
+}
+.card.s {
+    margin: 20px 20px 20px 10px;
+}
+.para {
+    font-size: 16px;
+    font-weight: 600;
+}
+.four-li {
+    margin-top: 20px;
+}
+
+
+
+.sellerdash td img {
+max-width: 85px;
+max-height: 85px;
+min-width: 85px;
+}
+
+
+
+
+
+.sellerorders table td img {
+    max-width: 90px;
+    max-height: 60px;
+    min-height: 60px;
+}
+.sellerorders table th,
+.sellerorders table td {
+    padding: 5px 10px;
+    text-align: center;
+}
+
+.editbutton {
+    cursor: pointer;
+    color: black;
+    text-decoration: none;
+    background: rgb(65, 93, 252);
+    border-radius: 5px;
+    padding: 2px 5px;
+    margin: 2px;
+}
+.deletebutton {
+    cursor: pointer;
+    color: black;
+    text-decoration: none;
+    background: rgb(167, 1, 1);
+    border-radius: 5px;
+    padding: 2px 5px;
+    margin: 2px;
+}
+
+
+
+
+
+
+
+.mainp {
+    text-align: center;
+    font-size: 25px;
+    color: black;
+    font-weight: 700;
+    margin-top: 25px;
+}
+.mainp span {
+    color: #4f7071;
+}
+
+.links {
+    height: 70px;
+}
+svg {
+    width: 20px;
+}
+.links nav div p {
+
+}
+.links nav div {
+left: 50%;
+position: relative;
+transform: translateX(-50%);
+width: 200px;
+font-size: 11px;
+}
+.links nav div:first-child a,
+.links nav div:first-child span {
+    display: none;
+}
+.links nav div a {
+    padding: 6px !important;
+font-size: 12px;
+color: gray;
+text-decoration: none;
+}
+
+.links nav div:last-child div span {
+
+}
+.links nav div:last-child div p {
+    margin-bottom: 2px;
+    font-size: 13px;
+}
+.links nav div:last-child div p span {
+display: inline;
+}
+
+
+form {
+    background-color: white;
+    border: 5px solid gainsboro;
+    height: 500px;
+    position: relative;
+    left: 50%;
+    transform: translateX(-50%);
+    margin-bottom: 50px;
+}
+
+.editform {
+    height: 585px;
+}
+
+form button {
+    padding: 10px 20px;
+    background-color: cadetblue;
+    color: white;
+    border: none;
+    cursor: pointer;
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+}
+form div {
+    margin-bottom: 20px;
+}
+.namelabel {
+    margin-left: 20px;
+    padding: 10px 10px 2px;
+    font-size: 19px;
+    font-weight: 600;
+}
+.nameinput {
+    padding: 5px;
+    border: 1px solid #ccc;
+    width: 400px;
+    margin-left: 50px;
+    border-radius: 4px;
+}
+
+.pricelabel {
+    margin-left: 30px;
+    font-size: 19px;
+    font-weight: 600;
+}
+.priceinput {
+    width: 85px;
+
+}
+
+.quantitylabel {
+    margin-left: 30px;
+    font-size: 19px;
+    font-weight: 600;
+}
+.quantityinput {
+    width: 85px;
+
+}
+
+.descriptionlabel {
+    padding: 10px 10px 2px;
+    font-size: 19px;
+    font-weight: 600;
+    margin-left: 20px;
+}
+.descriptioninput {
+    padding: 5px;
+    border: 1px solid #ccc;
+    width: -webkit-fill-available;
+    height: 90px;
+    margin-left: 50px;
+    border-radius: 4px;
+}
+
+.catselectlabel {
+    margin-left: 30px;
+    font-size: 19px;
+    font-weight: 600;
+}
+.catselect {
+
+}
+.catopt {
+
+}
+
+.secondcatselectlabel {
+    margin-left: 30px;
+    font-size: 19px;
+    font-weight: 600;
+}
+.secondcatselect {
+
+}
+.secondcatopt {
+
+}
+.imgsdiv {
+    margin-bottom: 0;
+}
+.imgpathlabel {
+    font-size: 19px;
+    font-weight: 600;
+}
+.imgpathinput {
+    background-color: darkgray;
+}
+.imgcont {
+    margin-bottom: 0;
+}
+img.lastimg {
+    width: 100px;
+    height: 100px;
+    margin-left: 30px;
+    border: 2px solid darkgray;
+    border-radius: 3px;
+}
+.imgdiv {
+    margin-bottom: 0;
+    display: flex;
+    margin-top: 1px;
+}
+.imgspathinput {
+    width: 157px;
+    font-size: 12px;
+    display: flex;
+}
+.imgspathlabel{
+    font-size: 15px;
+    font-weight: 600;
+    margin-right: 7px;
+}
+
+.imgpathone {
+    width: 157px;
+    font-size: 12px;
+    position: absolute;
+    right: 5px;
+    bottom: 90px;
+}
+.imgpathtwo {
+    width: 157px;
+    font-size: 12px;
+    position: absolute;
+    right: 5px;
+    bottom: 90px;
+}
+.imgpaththree {
+    width: 157px;
+    font-size: 12px;
+    position: absolute;
+    right: 5px;
+    bottom: 90px;
+}
+
+
+.sellerorders {
+    position: relative;
+    margin-top: 100px;
+}
+.sellerorders table{
+
+}
+.sellerorders table th {
+    background-color: cadetblue;
+}
+.sellerorders table th,
+.sellerorders table td {
+    border: 1px #777 solid;
+}
+

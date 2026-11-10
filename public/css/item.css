@@ -1,0 +1,722 @@
+/* Start Global Rules */
+* {
+  -webkit-box-sizing: border-box;
+  -moz-box-sizing: border-box;
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+html {
+  scroll-behavior: smooth;
+}
+body {
+  font-family: 'Open Sans', sans-serif;
+  background-color: #969292;
+}
+ul {
+  list-style: none;
+}
+.container {
+  padding-left: 15px;
+  padding-right: 15px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+@media (min-width: 768px) {
+  .container {
+      width: 750px;
+  }
+}
+
+@media (min-width: 992px) {
+  .container {
+      width: 970px;
+  }
+}
+
+@media (min-width: 1200px) {
+  .container {
+      width: 1170px;
+  }
+}
+/* End Global Rules */
+/* Start Header */
+header {
+  position: relative;
+  height: 152px;
+}
+header .top-bar {
+position: relative;
+display: flex;
+justify-content: space-between;
+align-items: center;
+background-color: #0e0021;
+height: 60px;
+}
+/*////////////////////////////////*/
+header .left-box {
+position: relative;
+display: flex;
+justify-content: space-evenly;
+align-items: center;
+width: 200px;
+}
+header .left-box .list {
+width: 100px;
+}
+header .left-box .list i {
+font-size: 40px;
+color: white;
+margin: auto 15px;
+}
+@media (max-width: 775px) {
+header .left-box .list {
+  width: 60px;
+}
+header .left-box .list i {
+  margin: auto 0 auto 15px;
+}
+}
+header .left-box a.logo {
+position: relative;
+height: 50px;
+width: 100px;
+}
+header .left-box a.logo img {
+position: relative;
+height: 40px;
+width: 40px;
+top: 5px;
+}
+header .left-box a.logo p{
+width: 50px;
+display: inline;
+font-size: 22px;
+position: absolute;
+top: 13px;
+margin-left: 5px;
+color: cadetblue;
+}
+
+/*///////////*/
+
+header .right-box {
+position: relative;
+display: flex;
+justify-content: space-evenly;
+align-items: center;
+width: 200px;
+color: white;
+}
+header .right-box a.one{
+text-decoration: none;
+}
+
+header .right-box .profile {
+color: white;
+}
+header .right-box .profile span {
+font-size: 15px;
+}
+header .right-box .profile i {
+font-size: 18px;
+}
+
+
+header .right-box .cart {
+position: relative;
+color: white;
+}
+header .right-box .cart i {
+font-size: 25px;
+}
+header .right-box .cart span {
+font-size: 14px;
+color: black;
+position: absolute;
+top: 1px;
+right: 9px;
+}
+
+
+
+@media (max-width: 420px) {
+header .left-box .list {
+  width: 50px;
+}
+header .left-box .list i {
+  margin: auto 7px;
+}
+header .left-box a.logo img {
+  height: 30px;
+  width: 35px;
+  top: 10px;
+}
+header .left-box a.logo p {
+  font-size: 21px;
+}
+
+header .right-box .profile span {
+  font-size: 12px;
+}
+header .right-box .profile i {
+  font-size: 15px;
+}
+
+header .right-box .cart i {
+  font-size: 21px;
+}
+header .right-box .cart span {
+  font-size: 12px;
+  right: 7px;
+}
+header .right-box a.one {
+  margin-left: 35px;
+}
+
+}
+/*////////////////////////////////*/
+
+
+header .search {
+height: 48px;
+background-color: cadetblue;
+border-color: #ddd;
+position: relative;
+}
+header .search i {
+font-size: 29px;
+left: 32px;
+top: 9px;
+z-index: 1;
+position: absolute;
+}
+header .search input {
+margin-left: 20px;
+height: 40px;
+border-radius: 10px;
+padding-left: 50px;
+width: 935px;
+position: absolute;
+top: 4px;
+}
+@media (max-width: 400px) {
+header .search input {
+  width: 290px;
+}
+}
+@media (min-width: 400px) {
+header .search input {
+  width: 330px;
+}
+}
+@media (min-width: 768px) {
+header .search input {
+  width: 680px;
+}
+}
+
+@media (min-width: 992px) {
+header .search input {
+  width: 900px;
+}
+}
+
+@media (min-width: 1200px) {
+header .search input {
+  width: 1100px;
+}
+}
+.myUL {
+display: none;
+overflow: hidden;
+list-style-type: none;
+margin-left: 10px;
+height: 120px;
+border-radius: 10px;
+padding-left: 50px;
+z-index: 3;
+position: absolute;
+top: 44px;
+}
+.myUL.active {
+display: block;
+}
+@media (max-width: 400px) {
+.myUL {
+  width: 300px;
+}
+}
+@media (min-width: 400px) {
+.myUL {
+  width: 330px;
+}
+}
+@media (min-width: 768px) {
+.myUL {
+  width: 515px;
+}
+}
+
+@media (min-width: 992px) {
+.myUL {
+  width: 735px;
+}
+}
+
+@media (min-width: 1200px) {
+.myUL {
+  width: 935px;
+}
+}
+#myUL li a {
+border: 1px solid #ddd;
+margin-top: -1px;
+background-color: #f6f6f6;
+padding: 5px;
+text-decoration: none;
+font-size: 17px;
+color: black;
+display: block;
+}
+
+
+#myUL li a:hover:not(.header) {
+background-color: #eee; /* Add a hover effect to all links, except for headers */
+}
+
+/*////////////////////////////////*/
+
+
+header .under-bar {
+height: 44px;
+background-color: #0e0021;
+margin-left: auto;
+margin-right: auto;
+}
+header .under-bar ul.main-categories {
+height: 44px;
+display: flex;
+justify-content: left;
+overflow: hidden;
+
+}
+
+@media (max-width: 420px) {
+header .under-bar ul.main-categories {
+  overflow: scroll;
+}
+}
+
+@media (min-width: 768px) {
+header .under-bar {
+  width: 720px;
+}
+}
+@media (min-width: 992px) {
+header .under-bar {
+  width: 940px;
+}
+}
+@media (min-width: 1200px) {
+header .under-bar {
+  width: 1140px;
+}
+}
+
+header .under-bar ul.main-categories li {
+display: inline-block;
+border-right: 2px solid #222222;
+text-align: center;
+padding: 0 21px;
+}
+
+header .under-bar ul.main-categories li a {
+height: 44px;
+display: inline-block;
+text-decoration: none;
+color: #ddd;
+font-size: 22px;
+text-align: center;
+padding-top: 9px;
+}
+@media (max-width: 420px) {
+header .under-bar ul.main-categories li {
+  padding: 0 2px;
+}
+header .under-bar ul.main-categories li a {
+  font-size: 13px;
+  padding-top: 12px;
+}
+}
+header .under-bar ul.main-categories li a:hover {
+color: cadetblue;
+}
+
+header .under-bar ul.main-categories li:last-of-type {
+border-right: 0px solid #222222;
+}
+
+/*////////////////////////////////*/
+header nav {
+position: relative;
+}
+header nav .left-list {
+display: none;
+position: absolute;
+top: -92px;
+left: -302px;
+width: 700px;
+height: 580px;
+background-color: #0e0021;
+z-index: 10;
+}
+header nav .left-list::before {
+content: "";
+width: 400px;
+height: 17px;
+position: absolute;
+right: 0px;
+top: -15px;
+background-color: transparent
+}
+
+header nav .left-list.active {
+display: block;
+animation-name: run;
+animation-duration: 3s;
+}
+@keyframes run {
+from {transform: translateX(-400px);}
+to {transform: translateX(0px);}
+}
+header nav .left-list.active.f {
+display: block;
+}
+header nav .left-list p {
+font-size: 25px;
+font-weight: bold;
+color: #ddd;
+margin-left: 310px;
+}
+header nav .left-list .uldiv {
+float: inline-end;
+}
+header nav .left-list .uldiv a {
+display: block;
+color: white;
+text-decoration: none;
+width: 400px;
+position: relative;
+}
+header nav .left-list .uldiv a.a.active,
+header nav .left-list .uldiv a.b.active,
+header nav .left-list .uldiv a.c.active,
+header nav .left-list .uldiv a.d.active,
+header nav .left-list .uldiv a.e.active,
+header nav .left-list .uldiv a.f.active,
+header nav .left-list .uldiv a.g.active,
+header nav .left-list .uldiv a.h.active,
+header nav .left-list .uldiv a.i.active,
+header nav .left-list .uldiv a.j.active,
+header nav .left-list .uldiv a.k.active {
+color: cadetblue;
+}
+header nav .left-list .uldiv a:hover {
+color: cadetblue;
+}
+header nav .left-list .uldiv li {
+padding: 12px 15px 12px 20px;
+width: 400px;
+cursor: pointer;
+font-size: 15px;
+}
+header nav .left-list .uldiv li:first-of-type {
+padding-top: 20px;
+}
+
+/*////////*/
+
+header nav .right-lists {
+display: none;
+position: relative;
+top: -92px;
+left: 198px;
+width: 500px;
+height: 550px;
+background-color: whitesmoke;
+z-index: 9;
+}
+header nav .right-lists.active {
+animation-name: run2;
+animation-duration: 1.5s;
+}
+@keyframes run2 {
+from {transform: translateX(-300px);}
+to {transform: translateX(0px);}
+}
+header nav .right-lists .secondlist {
+
+}
+header nav .right-lists .secondlist ul {
+display: flex;
+flex-wrap: wrap;
+}
+header nav .right-lists .secondlist ul a {
+color: black;
+text-decoration: none;
+width: 150px;
+height: 55px;
+position: relative;
+font-size: 14px;
+text-align: start;
+}
+header nav .right-lists .secondlist ul a li {
+padding: 12px 15px 12px 20px;
+position: relative;
+width: 150px;
+height: 55px;
+cursor: pointer;
+font-size: 14px;
+}
+header nav .right-lists .one-ul, 
+header nav .right-lists .two-ul, 
+header nav .right-lists .three-ul, 
+header nav .right-lists .four-ul, 
+header nav .right-lists .five-ul, 
+header nav .right-lists .six-ul, 
+header nav .right-lists .seven-ul, 
+header nav .right-lists .eight-ul, 
+header nav .right-lists .nine-ul, 
+header nav .right-lists .ten-ul, 
+header nav .right-lists .eleven-ul {
+display: none;
+position: absolute;
+top: 0px;
+right: 0px;
+width: 300px;
+height: 550px;
+background-color: whitesmoke;
+color: black;
+z-index: 2;
+}
+header nav .right-lists .one-ul.active, 
+header nav .right-lists .two-ul.active, 
+header nav .right-lists .three-ul.active, 
+header nav .right-lists .four-ul.active, 
+header nav .right-lists .five-ul.active, 
+header nav .right-lists .six-ul.active, 
+header nav .right-lists .seven-ul.active, 
+header nav .right-lists .eight-ul.active, 
+header nav .right-lists .nine-ul.active, 
+header nav .right-lists .ten-ul.active, 
+header nav .right-lists .eleven-ul.active {
+display: block;
+}
+
+header nav .right-lists.active {
+display: block;
+}
+
+@media (max-width: 700px) {
+header nav .left-list {
+  left: -112px;
+  width: 300px;
+  height: 580px;
+}
+header nav .left-list::before {
+  width: 180px;
+}
+header nav .left-list p {
+  font-size: 21px;
+  margin-left: 13px;
+  text-align: end;
+  padding-right: 25px;  
+}
+header nav .left-list .uldiv {
+  float: inline-end;
+}
+header nav .left-list .uldiv a {
+  width: 180px;
+}
+header nav .left-list .uldiv li {
+  padding: 12px 15px 12px 20px;
+  width: 180px;
+  font-size: 14px;
+}
+header nav .right-lists {
+  top: -92px;
+  left: 0px;
+  width: 300px;
+  height: 550px;
+  overflow: hidden;
+}
+header nav .right-lists .secondlist ul a {
+  width: 100px;
+  height: 55px;
+  font-size: 14px;
+}
+header nav .right-lists .secondlist ul a li {
+  padding: 5px 5px 5px 10px;
+  width: 100px;
+  height: 55px;
+  font-size: 14px;
+}
+
+header nav .right-lists .one-ul, 
+header nav .right-lists .two-ul, 
+header nav .right-lists .three-ul, 
+header nav .right-lists .four-ul, 
+header nav .right-lists .five-ul, 
+header nav .right-lists .six-ul, 
+header nav .right-lists .seven-ul, 
+header nav .right-lists .eight-ul, 
+header nav .right-lists .nine-ul, 
+header nav .right-lists .ten-ul, 
+header nav .right-lists .eleven-ul {
+  position: absolute;
+  top: 0px;
+  right: 0px;
+  width: 112px;
+  height: 550px;
+  background-color: whitesmoke;
+  color: black;
+}
+}
+/* End Header */
+
+
+
+
+
+/* Start Items Section */
+.item {
+  position: relative;
+  height: 800px;
+}
+.item .container {}
+
+.item .box {
+  position: relative;
+  background-color: #7e7a7a;
+  height: 650px;
+}
+.item .box h1 {
+  position: absolute;
+  left: 450px;
+  font-weight: bolder;
+}
+.item .box img {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 600px;
+  width: 400px;
+}
+.item .box p:first-of-type {
+  position: absolute;
+  left: 450px;
+  top: 250px;
+  font-size: 20px;
+}
+.item .box p:first-of-type span {
+
+}
+.item .box p:nth-of-type(2) {
+  position: absolute;
+  left: 450px;
+  top: 80px;
+  font-size: 20px;
+}
+.item .box p:last-of-type {
+  position: absolute;
+  left: 450px;
+  top: 950px;
+  font-size: 20px;
+}
+.item .box h3{
+  position: absolute;
+  left: 450px;
+  top: 400px;
+  font-size: 20px;
+}
+.item .box .add-box {
+  position: absolute;
+  left: 450px;
+  top: 300px;
+  font-size: 20px;
+}
+.item .box .add-box label {}
+.item .box .add-box select {}
+.item .box .add-box select option {}
+.item .box button {
+  width: 180px;
+  height: 40px;
+  padding: 3px;
+  font-size: 20px;
+  position: absolute;
+  right: 95px;
+  top: 450px;
+  font-size: medium;
+  background-color: rgb(7, 80, 7);
+}
+
+/* End CategoryOne Products Section */
+
+
+
+
+
+
+
+
+/* Start Footer */
+footer {
+  height: 250px;
+  text-align: center;
+  background-color: #2d2d2d;
+}
+footer .container {}
+footer p.f {
+  padding-top: 30px;
+  padding-bottom: 15px;
+  font-weight: bold;
+  color: cadetblue;
+}
+footer .i-cont {}
+footer .i-cont i {
+  margin: 0 15px;
+  color: cadetblue;
+}
+footer ul {
+  margin-top: 25px;
+  margin-bottom: 40px;
+}
+footer ul li {
+  margin: 0 10px;
+  display: inline-block;
+}
+footer ul li a {
+  text-decoration: none;
+  color: cadetblue;
+}
+@media (max-width: 450px) {
+  footer ul li a {
+    font-size: 15px;
+  }
+  footer ul li {
+    margin: 0 4px;
+  }
+}
+
+footer hr {
+  margin-top: 75px;
+  border-color: darkgrey;
+}
+footer p.l {
+  margin-top: 30px;
+  font-size: 14px;
+  color: darkgrey;
+}
+/* End Footer */

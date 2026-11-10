@@ -1,0 +1,689 @@
+/**
+ * BeerShop Unified Design System
+ * Palette: Craft Beer Warm Palette (Amber Gold, Roasted Malt Brown, Warm Cream Foam)
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=Outfit:wght@400;500;600;700&display=swap');
+
+:root {
+    /* Color Palette */
+    --bs-primary-beer: #d97706;          /* Rich Amber */
+    --bs-primary-hover: #b45309;         /* Deep Amber */
+    --bs-primary-light: #fef3c7;         /* Warm Foam Cream */
+    --bs-primary-glow: rgba(217, 119, 6, 0.25);
+
+    --bs-dark-malt: #201610;            /* Dark Roasted Malt */
+    --bs-dark-surface: #2b1d14;         /* Rich Cocoa / Stout */
+    --bs-dark-header: #19100a;          /* Deep Header Black-Brown */
+
+    --bs-cream-bg: #faf7f2;             /* Warm Light Canvas */
+    --bs-card-bg: #ffffff;
+    --bs-border-subtle: #ebdcc9;        /* Soft Warm Border */
+    --bs-border-hover: #d4bda2;
+
+    --bs-text-main: #1f1610;            /* High Contrast Body */
+    --bs-text-muted: #6b5c51;           /* Warm Muted Text */
+    --bs-text-light: #fdfaf6;
+
+    --bs-gold: #f59e0b;
+    --bs-gold-hover: #d97706;
+    --bs-success-brew: #10b981;
+    --bs-danger-brew: #ef4444;
+    --bs-info-brew: #0284c7;
+
+    /* Typography */
+    --bs-font-family: 'Cairo', 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --bs-font-size-base: 1rem;
+    --bs-line-height-base: 1.6;
+
+    /* Elevation & Shadows */
+    --bs-shadow-sm: 0 2px 4px rgba(32, 22, 16, 0.04);
+    --bs-shadow-md: 0 6px 16px rgba(32, 22, 16, 0.08);
+    --bs-shadow-lg: 0 12px 32px rgba(32, 22, 16, 0.12);
+    --bs-shadow-amber: 0 8px 24px rgba(217, 119, 6, 0.22);
+
+    /* Radii */
+    --bs-radius-sm: 8px;
+    --bs-radius-md: 12px;
+    --bs-radius-lg: 18px;
+    --bs-radius-pill: 9999px;
+
+    /* Transitions */
+    --bs-transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Base Document Styles */
+body {
+    font-family: var(--bs-font-family);
+    background-color: var(--bs-cream-bg);
+    color: var(--bs-text-main);
+    line-height: var(--bs-line-height-base);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+}
+
+/* Universal Media & Image Bounds */
+img {
+    max-width: 100%;
+    height: auto;
+}
+
+/* Constrained thumbnails for tables across all admin, seller, cart, and order views */
+table img, .table img, td img, .product-image img, .cart-table img {
+    width: 64px !important;
+    height: 64px !important;
+    max-width: 64px !important;
+    max-height: 64px !important;
+    object-fit: cover !important;
+    border-radius: var(--bs-radius-sm);
+    box-shadow: var(--bs-shadow-sm);
+    border: 1px solid var(--bs-border-subtle);
+    display: inline-block;
+}
+
+main.main-content-wrapper {
+    flex: 1 0 auto;
+}
+
+/* RTL / LTR Helpers */
+[dir="rtl"] {
+    text-align: right;
+}
+[dir="ltr"] {
+    text-align: left;
+}
+
+/* Links */
+a {
+    color: var(--bs-primary-beer);
+    text-decoration: none;
+    transition: var(--bs-transition);
+}
+a:hover {
+    color: var(--bs-primary-hover);
+}
+
+/* Header & Navigation Bar */
+.navbar-beershop {
+    background: linear-gradient(135deg, var(--bs-dark-header) 0%, var(--bs-dark-malt) 100%);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    padding: 0.75rem 1rem;
+    border-bottom: 2px solid rgba(217, 119, 6, 0.3);
+    position: sticky;
+    top: 0;
+    z-index: 1040;
+}
+
+.navbar-beershop .navbar-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    color: #ffffff !important;
+    font-size: 1.35rem;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+}
+
+.navbar-beershop .navbar-brand img {
+    height: 42px;
+    width: 42px;
+    border-radius: var(--bs-radius-sm);
+    object-fit: cover;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    border: 1px solid rgba(217, 119, 6, 0.4);
+}
+
+.navbar-beershop .navbar-brand span {
+    color: var(--bs-gold);
+}
+
+.navbar-beershop .nav-link {
+    color: #e5ded7 !important;
+    font-weight: 600;
+    font-size: 0.95rem;
+    padding: 0.5rem 0.85rem !important;
+    border-radius: var(--bs-radius-sm);
+    transition: var(--bs-transition);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.navbar-beershop .nav-link:hover,
+.navbar-beershop .nav-link.active {
+    color: #ffffff !important;
+    background: rgba(217, 119, 6, 0.2);
+}
+
+.nav-cart-badge {
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    color: #ffffff;
+    font-size: 0.75rem;
+    font-weight: 800;
+    padding: 0.2rem 0.55rem;
+    border-radius: var(--bs-radius-pill);
+    box-shadow: 0 2px 6px rgba(217, 119, 6, 0.4);
+}
+
+/* Secondary Sub-Navigation (Categories ribbon) */
+.subnav-ribbon {
+    background: #ffffff;
+    border-bottom: 1px solid var(--bs-border-subtle);
+    padding: 0.5rem 0;
+    overflow-x: auto;
+    white-space: nowrap;
+    box-shadow: var(--bs-shadow-sm);
+}
+
+.subnav-ribbon .cat-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.9rem;
+    border-radius: var(--bs-radius-pill);
+    background: var(--bs-cream-bg);
+    color: var(--bs-text-main);
+    font-size: 0.88rem;
+    font-weight: 600;
+    border: 1px solid var(--bs-border-subtle);
+    margin: 0.15rem 0.25rem;
+    transition: var(--bs-transition);
+}
+
+.subnav-ribbon .cat-pill:hover,
+.subnav-ribbon .cat-pill.active {
+    background: var(--bs-primary-light);
+    color: var(--bs-primary-hover);
+    border-color: var(--bs-primary-beer);
+    box-shadow: var(--bs-shadow-sm);
+}
+
+/* Product Cards */
+.beer-card {
+    background: var(--bs-card-bg);
+    border: 1px solid var(--bs-border-subtle);
+    border-radius: var(--bs-radius-md);
+    overflow: hidden;
+    box-shadow: var(--bs-shadow-sm);
+    transition: var(--bs-transition);
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    position: relative;
+}
+
+.beer-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--bs-shadow-lg);
+    border-color: var(--bs-primary-beer);
+}
+
+.beer-card-img-wrap {
+    position: relative;
+    width: 100%;
+    padding-top: 75%; /* 4:3 Aspect Ratio */
+    background: #f8f6f2;
+    overflow: hidden;
+}
+
+.beer-card-img-wrap img {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.4s ease;
+}
+
+.beer-card:hover .beer-card-img-wrap img {
+    transform: scale(1.05);
+}
+
+.beer-card-body {
+    padding: 1.15rem;
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+}
+
+.beer-card-title {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--bs-dark-malt);
+    margin-bottom: 0.4rem;
+    line-height: 1.4;
+}
+
+.beer-card-price {
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: var(--bs-primary-beer);
+    margin-bottom: 0.75rem;
+}
+
+/* Badges */
+.badge-stock {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.3rem 0.65rem;
+    font-size: 0.78rem;
+    font-weight: 700;
+    border-radius: var(--bs-radius-pill);
+    background-color: #ecfdf5;
+    color: #065f46;
+    border: 1px solid #a7f3d0;
+}
+
+.badge-order-status {
+    padding: 0.35rem 0.75rem;
+    font-size: 0.8rem;
+    font-weight: 700;
+    border-radius: var(--bs-radius-pill);
+    text-transform: capitalize;
+}
+.badge-status-pending { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+.badge-status-processing { background: #e0f2fe; color: #075985; border: 1px solid #bae6fd; }
+.badge-status-completed { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+.badge-status-cancelled { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+
+/* Buttons */
+.btn-beer-primary {
+    background: linear-gradient(135deg, var(--bs-primary-beer) 0%, var(--bs-primary-hover) 100%);
+    color: #ffffff !important;
+    font-weight: 700;
+    padding: 0.55rem 1.25rem;
+    border-radius: var(--bs-radius-sm);
+    border: none;
+    box-shadow: 0 4px 12px var(--bs-primary-glow);
+    transition: var(--bs-transition);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+.btn-beer-primary:hover {
+    background: linear-gradient(135deg, var(--bs-primary-hover) 0%, #78350f 100%);
+    box-shadow: var(--bs-shadow-amber);
+    transform: translateY(-1px);
+}
+
+.btn-beer-secondary {
+    background: #ffffff;
+    color: var(--bs-dark-malt) !important;
+    font-weight: 600;
+    padding: 0.55rem 1.25rem;
+    border-radius: var(--bs-radius-sm);
+    border: 1px solid var(--bs-border-subtle);
+    transition: var(--bs-transition);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.btn-beer-secondary:hover {
+    background: var(--bs-cream-bg);
+    border-color: var(--bs-primary-beer);
+    color: var(--bs-primary-beer) !important;
+}
+
+.btn-beer-danger {
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+    color: #ffffff !important;
+    font-weight: 600;
+    padding: 0.45rem 1rem;
+    border-radius: var(--bs-radius-sm);
+    border: none;
+    transition: var(--bs-transition);
+}
+.btn-beer-danger:hover {
+    background: #b91c1c;
+    box-shadow: 0 4px 12px rgba(220, 38, 38, 0.25);
+}
+
+/* Form Controls */
+.form-label {
+    font-weight: 700;
+    color: var(--bs-dark-malt);
+    font-size: 0.92rem;
+    margin-bottom: 0.4rem;
+}
+
+.form-control, .form-select {
+    border: 1px solid var(--bs-border-subtle);
+    border-radius: var(--bs-radius-sm);
+    padding: 0.65rem 0.9rem;
+    font-size: 0.95rem;
+    background-color: #ffffff;
+    color: var(--bs-text-main);
+    transition: var(--bs-transition);
+}
+
+.form-control:focus, .form-select:focus {
+    border-color: var(--bs-primary-beer);
+    box-shadow: 0 0 0 3px var(--bs-primary-glow);
+    outline: none;
+}
+
+.form-control:disabled, .form-control[readonly] {
+    background-color: #f5f2ed;
+    opacity: 0.75;
+}
+
+.form-feedback-error {
+    color: var(--bs-danger-brew);
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-top: 0.35rem;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+/* Tables */
+.beer-table-container {
+    background: #ffffff;
+    border: 1px solid var(--bs-border-subtle);
+    border-radius: var(--bs-radius-md);
+    overflow-x: auto;
+    box-shadow: var(--bs-shadow-sm);
+}
+
+.beer-table {
+    width: 100%;
+    margin-bottom: 0;
+    border-collapse: separate;
+    border-spacing: 0;
+}
+
+.beer-table thead th {
+    background-color: #f7f3ee;
+    color: var(--bs-dark-malt);
+    font-weight: 700;
+    font-size: 0.88rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 0.85rem 1rem;
+    border-bottom: 2px solid var(--bs-border-subtle);
+}
+
+.beer-table tbody td {
+    padding: 0.95rem 1rem;
+    vertical-align: middle;
+    border-bottom: 1px solid #f3ece4;
+    font-size: 0.93rem;
+}
+
+.beer-table tbody tr:hover {
+    background-color: #fefbf6;
+}
+
+/* Hero Carousel */
+.hero-slider-wrap {
+    border-radius: var(--bs-radius-lg);
+    overflow: hidden;
+    box-shadow: var(--bs-shadow-md);
+    background: var(--bs-dark-malt);
+    margin-bottom: 2.5rem;
+}
+
+.hero-slider-wrap .carousel-item {
+    height: 380px;
+}
+
+.hero-slider-wrap .carousel-item img {
+    height: 100%;
+    width: 100%;
+    object-fit: cover;
+    filter: brightness(0.85);
+}
+
+.hero-slider-wrap .carousel-caption {
+    background: rgba(25, 16, 10, 0.75);
+    backdrop-filter: blur(8px);
+    border-radius: var(--bs-radius-md);
+    padding: 1.25rem 2rem;
+    bottom: 2.5rem;
+    border: 1px solid rgba(217, 119, 6, 0.3);
+}
+
+/* Alerts */
+.alert-beer {
+    border-radius: var(--bs-radius-sm);
+    padding: 1rem 1.25rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    box-shadow: var(--bs-shadow-sm);
+}
+.alert-beer-success {
+    background: #ecfdf5;
+    color: #065f46;
+    border: 1px solid #a7f3d0;
+}
+.alert-beer-danger {
+    background: #fef2f2;
+    color: #991b1b;
+    border: 1px solid #fecaca;
+}
+
+/* Footer */
+.beershop-footer {
+    background: linear-gradient(135deg, var(--bs-dark-malt) 0%, var(--bs-dark-header) 100%);
+    color: #d1c7bc;
+    padding: 3rem 0 1.5rem;
+    margin-top: 4rem;
+    border-top: 3px solid var(--bs-primary-beer);
+}
+
+.beershop-footer h5 {
+    color: #ffffff;
+    font-weight: 800;
+    margin-bottom: 1.25rem;
+    font-size: 1.1rem;
+    position: relative;
+    padding-bottom: 0.5rem;
+}
+
+.beershop-footer h5::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 36px;
+    height: 3px;
+    background: var(--bs-primary-beer);
+    border-radius: var(--bs-radius-pill);
+}
+
+[dir="rtl"] .beershop-footer h5::after {
+    left: auto;
+    right: 0;
+}
+
+.beershop-footer a {
+    color: #d1c7bc;
+    transition: var(--bs-transition);
+}
+
+.beershop-footer a:hover {
+    color: var(--bs-gold);
+    padding-inline-start: 4px;
+}
+
+.beershop-footer-bottom {
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    padding-top: 1.25rem;
+    margin-top: 2rem;
+    font-size: 0.88rem;
+    text-align: center;
+}
+
+/* CoreUI Admin Overrides to harmonize with Design System */
+.sidebar-dark {
+    background: linear-gradient(180deg, var(--bs-dark-header) 0%, var(--bs-dark-malt) 100%) !important;
+    border-inline-end: 1px solid rgba(217, 119, 6, 0.25);
+}
+.sidebar-dark .nav-link.active,
+.sidebar-dark .nav-link:hover {
+    background: rgba(217, 119, 6, 0.2) !important;
+    color: var(--bs-gold) !important;
+}
+.header.header-sticky {
+    border-bottom: 2px solid var(--bs-border-subtle);
+}
+
+/* Single Product Details */
+.single-product-container {
+    background: #ffffff;
+    border-radius: var(--bs-radius-lg);
+    border: 1px solid var(--bs-border-subtle);
+    box-shadow: var(--bs-shadow-md);
+    overflow: hidden;
+    padding: 2rem;
+    margin-bottom: 2.5rem;
+}
+
+.product-gallery-main {
+    width: 100%;
+    height: 420px;
+    background: #fdfbf7;
+    border: 1px solid var(--bs-border-subtle);
+    border-radius: var(--bs-radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.product-gallery-main img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    transition: transform 0.3s ease;
+}
+
+.product-gallery-thumbs {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 1rem;
+    flex-wrap: wrap;
+}
+
+.product-thumb-btn {
+    width: 72px;
+    height: 72px;
+    padding: 0;
+    border: 2px solid var(--bs-border-subtle);
+    border-radius: var(--bs-radius-sm);
+    background: #ffffff;
+    overflow: hidden;
+    cursor: pointer;
+    transition: var(--bs-transition);
+}
+
+.product-thumb-btn:hover,
+.product-thumb-btn.active {
+    border-color: var(--bs-primary-beer);
+    box-shadow: 0 0 0 3px var(--bs-primary-glow);
+}
+
+.product-thumb-btn img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+/* Legacy Template Compatibility Fallbacks */
+.box-cont {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 1.5rem;
+    margin: 1.5rem 0;
+}
+
+.box-cont .box {
+    background: var(--bs-card-bg);
+    border: 1px solid var(--bs-border-subtle);
+    border-radius: var(--bs-radius-md);
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    box-shadow: var(--bs-shadow-sm);
+    transition: var(--bs-transition);
+}
+
+.box-cont .box:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--bs-shadow-lg);
+    border-color: var(--bs-primary-beer);
+}
+
+.box-cont .box img {
+    width: 100%;
+    height: 200px;
+    object-fit: cover;
+    border-radius: var(--bs-radius-sm);
+    margin-bottom: 0.85rem;
+}
+
+.box-cont .box h2 {
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: var(--bs-primary-beer);
+    margin: 0.5rem 0;
+}
+
+.cart-btn, .boxed-btn {
+    background: linear-gradient(135deg, var(--bs-primary-beer) 0%, var(--bs-primary-hover) 100%);
+    color: #ffffff !important;
+    font-weight: 700;
+    padding: 0.55rem 1.25rem;
+    border-radius: var(--bs-radius-sm);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    transition: var(--bs-transition);
+    border: none;
+}
+
+.cart-btn:hover, .boxed-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--bs-shadow-amber);
+    color: #ffffff;
+}
+
+/* Order Summary & Checkout Styles */
+.order-summary-card {
+    background: #ffffff;
+    border: 1px solid var(--bs-border-subtle);
+    border-radius: var(--bs-radius-md);
+    padding: 1.5rem;
+    box-shadow: var(--bs-shadow-sm);
+}
+
+.order-summary-card .summary-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.65rem 0;
+    border-bottom: 1px dashed var(--bs-border-subtle);
+    font-weight: 500;
+}
+
+.order-summary-card .summary-item.total-item {
+    border-top: 2px solid var(--bs-primary-beer);
+    border-bottom: none;
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: var(--bs-primary-beer);
+    padding-top: 1rem;
+}
+

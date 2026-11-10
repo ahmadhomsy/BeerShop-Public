@@ -1,0 +1,256 @@
+
+table {
+    position: relative;
+    display: block;
+    left: 40px;
+    width: 100% !important;
+}
+
+.links {
+    height: 70px;
+    position: relative;
+    left: 50%;
+    transform: translateX(-50%);
+}
+svg {
+    width: 20px;
+}
+.links nav div p {
+
+}
+.links nav div {
+left: 50%;
+position: relative;
+transform: translateX(-50%);
+width: 200px;
+font-size: 11px;
+}
+.links nav div:first-child a,
+.links nav div:first-child span {
+    display: none;
+}
+.links nav div a {
+    padding: 6px !important;
+font-size: 12px;
+color: gray;
+text-decoration: none;
+}
+
+.links nav div:last-child div span {
+
+}
+.links nav div:last-child div p {
+    margin-bottom: 2px;
+    font-size: 13px;
+}
+.links nav div:last-child div p span {
+display: inline;
+}
+
+td a.btn {
+    color: black;
+    text-decoration: none;
+}
+td a.btn:first-child {
+    background-color: yellowgreen;
+}
+td a.btn:last-child {
+    background-color: darkred;
+}
+
+
+
+
+
+
+form {
+    background-color: white;
+    border: 5px solid gainsboro;
+    width: 500px;
+    height: 500px;
+    position: relative;
+    left: 50%;
+    transform: translateX(-50%);
+    margin-bottom: 50px;
+}
+
+.editform {
+    height: 585px;
+}
+
+form button {
+    padding: 10px 20px;
+    background-color: cadetblue;
+    color: white;
+    border: none;
+    cursor: pointer;
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+}
+form div {
+    margin-bottom: 20px;
+}
+.namelabel {
+    margin-left: 20px;
+    padding: 10px 10px 2px;
+    width: 400px;
+    font-size: 19px;
+    font-weight: 600;
+}
+.nameinput {
+    padding: 5px;
+    border: 1px solid #ccc;
+    width: 400px;
+    margin-left: 50px;
+    border-radius: 4px;
+}
+
+.pricelabel {
+    margin-left: 30px;
+    font-size: 19px;
+    font-weight: 600;
+}
+.priceinput {
+    width: 85px;
+
+}
+
+.quantitylabel {
+    margin-left: 30px;
+    font-size: 19px;
+    font-weight: 600;
+}
+.quantityinput {
+    width: 85px;
+
+}
+
+.descriptionlabel {
+    padding: 10px 10px 2px;
+    width: 400px;
+    font-size: 19px;
+    font-weight: 600;
+    margin-left: 20px;
+}
+.descriptioninput {
+    padding: 5px;
+    border: 1px solid #ccc;
+    width: 400px;
+    height: 90px;
+    margin-left: 50px;
+    border-radius: 4px;
+}
+
+.catselectlabel {
+    margin-left: 30px;
+    font-size: 19px;
+    font-weight: 600;
+}
+.catselect {
+
+}
+.catopt {
+
+}
+
+.secondcatselectlabel {
+    margin-left: 30px;
+    font-size: 19px;
+    font-weight: 600;
+}
+.secondcatselect {
+
+}
+.secondcatopt {
+
+}
+.imgsdiv {
+    margin-bottom: 0;
+}
+.imgpathlabel {
+    font-size: 19px;
+    font-weight: 600;
+}
+.imgpathinput {
+    background-color: darkgray;
+}
+.imgcont {
+    margin-bottom: 0;
+}
+img.lastimg {
+    width: 100px;
+    height: 100px;
+    margin-left: 30px;
+    border: 2px solid darkgray;
+    border-radius: 3px
+px
+;
+}
+.imgdiv {
+    margin-bottom: 0;
+    display: flex;
+    margin-top: 1px;
+}
+.imgspathinput {
+    width: 157px;
+    font-size: 12px;
+    display: flex;
+}
+.imgspathlabel{
+    font-size: 15px;
+    font-weight: 600;
+    margin-right: 7px;
+}
+
+.imgpathone {
+    width: 157px;
+    font-size: 12px;
+    position: absolute;
+    right: 5px;
+    bottom: 90px;
+}
+.imgpathtwo {
+    width: 157px;
+    font-size: 12px;
+    position: absolute;
+    right: 5px;
+    bottom: 90px;
+}
+.imgpaththree {
+    width: 157px;
+    font-size: 12px;
+    position: absolute;
+    right: 5px;
+    bottom: 90px;
+}
+
+
+.mainp {
+    text-align: center;
+    font-size: 25px;
+    color: black;
+    font-weight: 700;
+    margin-top: 25px;
+}
+.mainp span {
+    color: #4f7071;
+}
+
+
+.footer {
+    display: block;
+    width: 100%;
+
+}
+.footer div {
+    text-align: end;
+
+}
+
+
+
+
+.table-responsive {
+    overflow-x:hidden!important;
+}
