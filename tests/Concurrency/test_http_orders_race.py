@@ -1,37 +1,79 @@
-import requests
-import time
-import sys
 import subprocess
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import requests
 
 BASE_URL = "http://localhost:8080/api/v1"
 LOGIN_URL = f"{BASE_URL}/auth/login"
 ORDERS_URL = f"{BASE_URL}/orders"
 
 
-def get_jwt_token(email="aa@gmail.com", password="0000"):
-    res = requests.post(LOGIN_URL, json={"email": email, "password": password})
-    if res.status_code == 200:
-        return res.json()["data"]["token"]
-    raise Exception(f"Failed to obtain token: {res.text}")
+def get_customer_jwt(email="cc@gmail.com", password="0000"):
+    """
+    Authenticate using documented customer demo account.
+    """
+    res = requests.post(LOGIN_URL, json={"email": email, "password": password}, timeout=5.0)
+    assert res.status_code == 200, f"Login failed ({res.status_code}): {res.text}"
+    body = res.json()
+    assert body.get("success") is True, f"Login response success is not True: {body}"
+    token = body.get("data", {}).get("token")
+    assert token, "Token missing in login response."
+    return token
+
+
+def reset_inventory_stock(product_id=1, total_stock=1, reserved_stock=0):
+    """
+    Reset inventory table in PostgreSQL to exact test quantities.
+    """
+    sql = (
+        f"DELETE FROM reservation_items WHERE product_id = {product_id}; "
+        f"UPDATE inventory SET total_stock = {total_stock}, reserved_stock = {reserved_stock} "
+        f"WHERE product_id = {product_id};"
+    )
+    res = subprocess.run([
+        "docker", "compose", "exec", "-T", "db_inventory",
+        "psql", "-U", "inventory_user", "-d", "inventory_db",
+        "-c", sql
+    ], capture_output=True, text=True, check=True)
+    return res.stdout
+
+
+def fetch_inventory_state(product_id=1):
+    """
+    Read actual total_stock and reserved_stock directly from PostgreSQL.
+    """
+    query = f"SELECT total_stock, reserved_stock FROM inventory WHERE product_id = {product_id};"
+    res = subprocess.run([
+        "docker", "compose", "exec", "-T", "db_inventory",
+        "psql", "-U", "inventory_user", "-d", "inventory_db",
+        "-t", "-A", "-F", ",", "-c", query
+    ], capture_output=True, text=True, check=True)
+
+    raw = res.stdout.strip()
+    assert raw, f"Empty output from PostgreSQL query: {query}"
+    parts = raw.split(",")
+    assert len(parts) == 2, f"Unexpected CSV format from PostgreSQL: '{raw}'"
+    total_stock = int(parts[0].strip())
+    reserved_stock = int(parts[1].strip())
+    available_stock = total_stock - reserved_stock
+    return total_stock, reserved_stock, available_stock
 
 
 def test_concurrent_orders_race():
-    print("=" * 75)
+    print("=" * 80)
     print("  HTTP RACE CONDITION TEST: 10 CONCURRENT POST /api/v1/orders")
     print("  Target: Simultaneous requests for the LAST remaining piece of Product #1")
-    print("=" * 75)
+    print("=" * 80)
 
-    token = get_jwt_token()
-    print("[Auth] JWT Bearer Token obtained successfully.")
+    # 1. Acquire JWT for documented customer demo account
+    token = get_customer_jwt()
+    print("[1] Customer JWT Bearer Token acquired successfully.")
 
-    # Reset stock for Product 1 in PostgreSQL inventory container to exactly 1 piece
-    subprocess.run([
-        "docker", "compose", "exec", "-T", "db_inventory",
-        "psql", "-U", "inventory_user", "-d", "inventory_db",
-        "-c", "UPDATE inventory SET total_stock = 1, reserved_stock = 0 WHERE product_id = 1;"
-    ], check=True)
-    print("[Setup] Product #1 stock reset in PostgreSQL to: total_stock = 1, reserved_stock = 0 (Available = 1).")
+    # 2. Reset database state
+    reset_inventory_stock(product_id=1, total_stock=1, reserved_stock=0)
+    init_total, init_reserved, init_avail = fetch_inventory_state(1)
+    print(f"[2] Inventory initialized: total_stock={init_total}, reserved_stock={init_reserved}, available_stock={init_avail}")
+    assert init_total == 1 and init_reserved == 0 and init_avail == 1, "Initial stock state mismatch!"
 
     headers = {
         "Authorization": f"Bearer {token}",
@@ -40,11 +82,11 @@ def test_concurrent_orders_race():
     }
 
     order_payload = {
-        "name": "Concurrent Buyer",
-        "email": "cc@gmail.com",
-        "address": "Street 10, Apartment 5",
+        "name": "Concurrent Customer",
+        "email": "customer@example.com",
+        "address": "Damascus High Street 10",
         "phone": "0911223344",
-        "note": "Competing for last piece",
+        "note": "Testing last piece concurrency",
         "items": [
             {
                 "product_id": 1,
@@ -54,19 +96,19 @@ def test_concurrent_orders_race():
     }
 
     num_requests = 10
-    start_barrier = time.time() + 0.3
+    start_barrier = time.time() + 0.35
 
     def send_order_request(idx):
         sleep_time = start_barrier - time.time()
         if sleep_time > 0:
             time.sleep(sleep_time)
         try:
-            r = requests.post(ORDERS_URL, json=order_payload, headers=headers, timeout=5.0)
+            r = requests.post(ORDERS_URL, json=order_payload, headers=headers, timeout=10.0)
             return (idx, r.status_code, r.json())
         except Exception as e:
-            return (idx, 500, {"error": str(e)})
+            return (idx, 500, {"error": str(e), "message": "Exception during request"})
 
-    print(f"\n[Action] Sending {num_requests} simultaneous HTTP POST requests...")
+    print(f"\n[3] Launching {num_requests} concurrent HTTP requests at exact barrier time...")
     results = []
     with ThreadPoolExecutor(max_workers=num_requests) as executor:
         futures = [executor.submit(send_order_request, i + 1) for i in range(num_requests)]
@@ -75,34 +117,41 @@ def test_concurrent_orders_race():
 
     results.sort(key=lambda x: x[0])
 
-    created_orders = [r for r in results if r[1] == 201]
-    rejected_orders = [r for r in results if r[1] != 201]
+    # 4. Analyze HTTP status codes
+    status_codes = [r[1] for r in results]
+    count_201 = status_codes.count(201)
+    count_422 = status_codes.count(422)
+    unexpected = [code for code in status_codes if code not in (201, 422)]
 
-    print("\n" + "-" * 75)
+    print("\n" + "-" * 80)
     print("  HTTP RESPONSES SUMMARY:")
-    print("-" * 75)
+    print("-" * 80)
     for r in results:
-        status_label = "[201 CREATED - ORDER PLACED]" if r[1] == 201 else f"[{r[1]} REJECTED - OUT OF STOCK]"
+        status_label = "[201 CREATED]" if r[1] == 201 else f"[{r[1]} REJECTED]"
         msg = r[2].get("message", "")
-        print(f"  Request #{r[0]:02d} -> Status: {r[1]} | {status_label} | Msg: {msg}")
+        print(f"  Req #{r[0]:02d} -> HTTP {r[1]} | {status_label:<15} | Message: {msg}")
 
-    print("-" * 75)
-    print(f"Total 201 Created (Success) : {len(created_orders)} (Expected: EXACTLY 1)")
-    print(f"Total Rejected              : {len(rejected_orders)} (Expected: EXACTLY {num_requests - 1})")
-    print("-" * 75)
+    print("-" * 80)
+    print(f"Total 201 Created (Success)       : {count_201} (Required: EXACTLY 1)")
+    print(f"Total 422 Unprocessable (Rejected): {count_422} (Required: EXACTLY 9)")
+    print(f"Unexpected Status Codes           : {len(unexpected)} (Required: 0)")
+    print("-" * 80)
 
-    assert len(created_orders) == 1, f"RACE CONDITION FAILURE: {len(created_orders)} orders created instead of 1!"
-    assert len(rejected_orders) == num_requests - 1, f"Expected {num_requests - 1} rejected orders!"
+    # 5. Assert HTTP Status Code Distribution
+    assert len(unexpected) == 0, f"Unexpected HTTP status codes encountered: {unexpected}"
+    assert count_201 == 1, f"Expected EXACTLY 1 HTTP 201 response, got {count_201}!"
+    assert count_422 == 9, f"Expected EXACTLY 9 HTTP 422 responses, got {count_422}!"
 
-    print("\n[PostgreSQL Verification] Querying inventory table in db_inventory for Product #1:")
-    verify = subprocess.run([
-        "docker", "compose", "exec", "-T", "db_inventory",
-        "psql", "-U", "inventory_user", "-d", "inventory_db",
-        "-c", "SELECT product_id, total_stock, reserved_stock FROM inventory WHERE product_id = 1;"
-    ], capture_output=True, text=True)
-    print(verify.stdout)
+    # 6. Read and assert final PostgreSQL database state
+    print("\n[4] Querying and asserting PostgreSQL inventory state...")
+    final_total, final_reserved, final_avail = fetch_inventory_state(1)
+    print(f"  Final State -> total_stock: {final_total}, reserved_stock: {final_reserved}, available_stock: {final_avail}")
 
-    print(">>> HTTP RACE CONDITION PROOF: PASSED! Exactly ONE 201 Created and the remaining 9 were rejected.")
+    assert final_total == 1, f"PostgreSQL total_stock must be 1, got {final_total}"
+    assert final_reserved == 1, f"PostgreSQL reserved_stock must be 1, got {final_reserved}"
+    assert final_avail == 0, f"PostgreSQL available_stock must be 0, got {final_avail}"
+
+    print("\n>>> HTTP RACE CONDITION PROOF: PASSED! Exactly 1 order created, 9 rejected with 422, zero overselling.")
     return True
 
 

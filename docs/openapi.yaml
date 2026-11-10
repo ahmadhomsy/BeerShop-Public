@@ -1,7 +1,9 @@
 openapi: 3.0.3
 info:
-  title: Beershop Modular REST API
-  description: Modular, secure REST API with JWT Authentication, Role-based Access Control, and Rate Limiting.
+  title: BeerShop Modular REST API
+  description: |
+    Production-grade Modular REST API with JWT Authentication, Role-based Access Control (RBAC),
+    Polyglot Python gRPC Inventory Microservice, and Standardized Error Responses.
   version: 1.0.0
 servers:
   - url: http://localhost:8080/api/v1
@@ -22,17 +24,57 @@ components:
       properties:
         success:
           type: boolean
+          example: true
         message:
           type: string
+          example: "Operation completed successfully."
         data:
           nullable: true
         errors:
           nullable: true
+          example: null
+
+    StandardErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+          example: "Human-readable error description"
+        data:
+          nullable: true
+          example: null
+        errors:
+          nullable: true
+          example: null
+
+    ValidationErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+          example: "Validation error."
+        data:
+          nullable: true
+          example: null
+        errors:
+          type: object
+          example:
+            stock:
+              - "Insufficient stock for product 1"
 
 paths:
   /auth/register:
     post:
-      summary: Register a new user
+      summary: Register a new customer user
+      description: |
+        Registers a new customer account with standard privileges and returns an authenticated JWT.
+        Client cannot select a role; roles are enforced server-side.
       tags: [Users & Auth]
       requestBody:
         required: true
@@ -44,22 +86,26 @@ paths:
               properties:
                 name:
                   type: string
-                  example: "John Doe"
+                  example: "Jane Customer"
                 email:
                   type: string
-                  example: "john@example.com"
+                  example: "jane@example.com"
                 password:
                   type: string
                   example: "secret123"
-                role:
-                  type: string
-                  enum: [user, seller, admin]
-                  example: "user"
       responses:
         '201':
           description: User registered successfully with JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse'
         '422':
           description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
 
   /auth/login:
     post:
@@ -75,17 +121,29 @@ paths:
               properties:
                 email:
                   type: string
-                  example: "aa@gmail.com"
+                  example: "cc@gmail.com"
                 password:
                   type: string
                   example: "0000"
       responses:
         '200':
           description: JWT token generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse'
         '401':
-          description: Invalid credentials
+          description: Invalid email or password
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardErrorResponse'
         '429':
           description: Rate limit exceeded (Max 5 attempts / minute)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardErrorResponse'
 
   /auth/me:
     get:
@@ -96,8 +154,16 @@ paths:
       responses:
         '200':
           description: Profile retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse'
         '401':
-          description: Unauthenticated
+          description: Unauthenticated or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardErrorResponse'
 
   /auth/logout:
     post:
@@ -108,6 +174,16 @@ paths:
       responses:
         '200':
           description: Logged out successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse'
+        '401':
+          description: Unauthenticated or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardErrorResponse'
 
   /products:
     get:
@@ -131,9 +207,13 @@ paths:
       responses:
         '200':
           description: Paginated product list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse'
 
     post:
-      summary: Add a new product with image (Admin or Seller only)
+      summary: Add a new product (Admin or Seller only)
       tags: [Products]
       security:
         - bearerAuth: []
@@ -151,8 +231,6 @@ paths:
                   type: string
                 price:
                   type: number
-                quantity:
-                  type: integer
                 category_id:
                   type: integer
                 second_category_id:
@@ -165,12 +243,35 @@ paths:
       responses:
         '201':
           description: Product created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse'
+        '401':
+          description: Unauthenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardErrorResponse'
         '403':
           description: Forbidden - Requires admin or seller role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardErrorResponse'
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
 
   /products/{id}:
     get:
-      summary: Get product details
+      summary: Get product details with live inventory stock
+      description: |
+        Retrieves product details and queries the live Python gRPC inventory microservice for real-time available stock.
+        Returns 503 if the inventory microservice is temporarily unavailable.
       tags: [Products]
       parameters:
         - in: path
@@ -180,9 +281,23 @@ paths:
             type: integer
       responses:
         '200':
-          description: Product details
+          description: Product details with live stock
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse'
         '404':
           description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardErrorResponse'
+        '503':
+          description: Inventory microservice temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardErrorResponse'
 
   /orders:
     get:
@@ -199,9 +314,23 @@ paths:
       responses:
         '200':
           description: List of orders
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse'
+        '401':
+          description: Unauthenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardErrorResponse'
 
     post:
-      summary: Place a new order
+      summary: Place a new order with atomic gRPC stock reservation
+      description: |
+        Creates an order by reserving inventory via gRPC, saving the order transactionally in MySQL,
+        and confirming the reservation in PostgreSQL. Returns 422 if stock is insufficient.
+        Returns 503 if the inventory microservice is down.
       tags: [Orders]
       security:
         - bearerAuth: []
@@ -236,6 +365,28 @@ paths:
       responses:
         '201':
           description: Order placed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse'
+        '401':
+          description: Unauthenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardErrorResponse'
+        '422':
+          description: Validation error or insufficient inventory
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '503':
+          description: Inventory microservice temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardErrorResponse'
 
   /orders/{id}:
     get:
@@ -252,10 +403,28 @@ paths:
       responses:
         '200':
           description: Order details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse'
+        '401':
+          description: Unauthenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardErrorResponse'
         '403':
           description: Forbidden - Customer cannot view another customer's order
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardErrorResponse'
         '404':
           description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardErrorResponse'
 
   /orders/{id}/status:
     patch:
@@ -283,8 +452,34 @@ paths:
       responses:
         '200':
           description: Order status updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse'
+        '401':
+          description: Unauthenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardErrorResponse'
         '403':
           description: Forbidden - Non-admin user cannot change order status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardErrorResponse'
+        '404':
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardErrorResponse'
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
 
   /notifications:
     get:
@@ -295,6 +490,16 @@ paths:
       responses:
         '200':
           description: Notifications list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse'
+        '401':
+          description: Unauthenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardErrorResponse'
 
   /notifications/{id}/read:
     patch:
@@ -311,3 +516,19 @@ paths:
       responses:
         '200':
           description: Marked as read
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse'
+        '401':
+          description: Unauthenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardErrorResponse'
+        '404':
+          description: Notification not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardErrorResponse'

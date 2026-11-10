@@ -74,15 +74,27 @@ docker compose ps
 
 ---
 
-## 3. بيانات الدخول التجريبية (Demo Accounts)
+## 3. بيانات الدخول التجريبية والأمان في الإنتاج (Demo & Production Accounts)
 
-تمت تهيئة الحسابات التالية تلقائياً في قاعدة البيانات بكلمات مرور قياسية:
+> ⚠️ **تنبيه أمني هام**: بيانات الدخول التجريبية أدناه مخصصة **حصراً لبيئات التطوير والاختبار المحلي (`local` / `testing`)** لأغراض العرض الأكاديمي، ويتم تعطيل زراعتها تلقائياً عند تشغيل النظام في بيئة الإنتاج (`APP_ENV=production`).
 
-| الدور (Role) | البريد الإلكتروني (Email) | كلمة المرور (Password) | الصلاحيات |
-|---|---|---|---|
-| **مدير (Admin)** | `aa@gmail.com` | `0000` | إضافة وتعديل وحذف المنتجات، تحديث حالات الطلبات، عرض جميع طلبات النظام |
-| **زبون (Customer)** | `cc@gmail.com` | `0000` | إنشاء الطلبات، عرض طلباته الخاصة فقط (يُمنع من تعديل الحالات أو رؤية طلبات غيره) |
-| **بائع (Seller)** | `bb@gmail.com` | `0000` | إدارة المنتجات التابعة لمتجره |
+| الدور (Role) | البريد الإلكتروني (Email) | كلمة المرور (Password) | البيئة المسموحة | الصلاحيات |
+|---|---|---|---|---|
+| **مدير (Admin)** | `aa@gmail.com` | `0000` | Local / Testing فقط | إضافة وتعديل وحذف المنتجات، تحديث حالات الطلبات، عرض جميع طلبات النظام |
+| **زبون (Customer)** | `cc@gmail.com` | `0000` | Local / Testing فقط | إنشاء الطلبات، عرض طلباته الخاصة فقط (يُمنع من تعديل الحالات أو رؤية طلبات غيره) |
+| **بائع (Seller)** | `bb@gmail.com` | `0000` | Local / Testing فقط | إدارة المنتجات التابعة لمتجره |
+
+### إنشاء حساب المدير في بيئة الإنتاج (Production Admin Provisioning):
+في بيئة الإنتاج، يتم إنشاء حساب المدير عبر أمر Artisan المخصص الآمن:
+```bash
+docker compose exec app php artisan user:create-admin admin@yourdomain.com --name="Super Admin"
+```
+أو عبر تمرير المتغيرات البيئية عند أول تشغيل فقط:
+```env
+INITIAL_ADMIN_EMAIL=admin@yourdomain.com
+INITIAL_ADMIN_PASSWORD=YourStrongPasswordHere!
+INITIAL_ADMIN_NAME="Production Admin"
+```
 
 ---
 
@@ -93,14 +105,21 @@ docker compose ps
 ```bash
 python tests/Concurrency/test_http_orders_race.py
 ```
-- **النتيجة المتوقعة**: طلب واحد فقط ينجح برمز `201 Created`، و 9 طلبات تُرفض برمز `422 Unprocessable Entity`.
-- **التحقق من قاعدة بيانات PostgreSQL**:
+- **النتيجة المتوقعة**: طلب واحد فقط ينجح برمز `201 Created`، و 9 طلبات تُرفض برمز `422 Unprocessable Entity` (مع التأكد من عدم وجود أي خطأ 500 أو 401 أو 429).
+- **التحقق من قاعدة بيانات PostgreSQL**: يتم فحص القيم الفعلية برمجياً وقراءتها من قاعدة البيانات:
 ```bash
 docker compose exec db_inventory psql -U inventory_user -d inventory_db -c "SELECT product_id, total_stock, reserved_stock FROM inventory WHERE product_id = 1;"
-# النتيجة: total_stock = 1, reserved_stock = 1
+# النتيجة المؤكدة: total_stock = 1, reserved_stock = 1, available_stock = 0
 ```
 
-### الإثبات الثاني: توقف خدمة المخزون ومهلة الـ Deadline (HTTP 503)
+### الإثبات الثاني: سباق التزامن المباشر عبر gRPC (Direct gRPC Race Condition)
+إرسال 10 طلبات حجز مخزون `ReserveStock` متزامنة مباشرة عبر عميل gRPC نحو الخدمة المصغرة:
+```bash
+python tests/Concurrency/test_race_condition.py
+```
+- **النتيجة المتوقعة**: نجاح حجز واحد فقط (`success: True`)، ورفض 9 حجوزات (`success: False`)، واستقرار المخزون النهائي عند `reserved_stock = 1` و `available_stock = 0` دون أي بيع زائد (Zero Overselling).
+
+### الإثبات الثالث: توقف خدمة المخزون ومهلة الـ Deadline (HTTP 503)
 1. قم بإيقاف خدمة المخزون مؤقتاً:
 ```bash
 docker compose stop inventory_service
@@ -124,8 +143,13 @@ python tests/Concurrency/test_service_down_503.py
 docker compose start inventory_service
 ```
 
-### الإثبات الثالث: المعاملات التعويضية (Compensating Transactions)
-اختبار يثبت أنه عند حدوث خطأ أثناء إنشاء الطلب في Laravel بعد نجاح حجز المخزون، يتم التراجع الفوري عن الحجز في خادم المخزون واسترجاع الكمية المتاحة:
+### الإثبات الرابع: المعاملات التعويضية (Compensating Transactions)
+اختبار يثبت تمييز 4 حالات فشل مختلفة:
+1. الفشل بسبب عدم وجود المنتج في الكتالوج (Missing Product).
+2. الفشل أثناء حفظ الطلب في قاعدة بيانات MySQL (Order Persistence Failure).
+3. الفشل أثناء حجز المخزون (ReserveStock Failure - لا يتم استدعاء إجراء تعويضي لعدم حجز شيء).
+4. الفشل أثناء تأكيد الحجز (ConfirmStock Failure - إلغاء الطلب المحفوظ واستدعاء الإجراء التعويضي).
+
 ```bash
 docker compose exec app php artisan test --filter=CompensationTransactionTest
 ```
@@ -137,10 +161,29 @@ docker compose exec app php artisan test
 
 ---
 
-## 5. توثيق الواجهات البرمجية (API Documentation)
+## 5. توثيق الواجهات البرمجية ونموذج الاستجابة الموحد (API Documentation & Error Contract)
 
 - **ملف مواصفات OpenAPI 3.0**:
   [docs/openapi.yaml](docs/openapi.yaml)
 - **مجموعة Postman الجاهزة للاختبار**:
   [docs/postman_collection.json](docs/postman_collection.json)
-  (تحتوي على التوثيق، تسجيل الدخول، استعراض وتصفية المنتجات، إنشاء الطلبات، وتغيير حالاتها).
+  (تحتوي على التوثيق، تسجيل الدخول لكافة الأدوار، استعراض وتصفية المنتجات، إنشاء الطلبات، وتغيير حالاتها).
+
+### العقد الموحد لردود الأخطاء (Standardized API Error Contract):
+تلتزم جميع الواجهات البرمجية بنموذج استجابة موحد دون تسريب أي بيانات حساسة أو تتبعات برمجية (Stack Traces):
+```json
+{
+  "success": false,
+  "message": "Human-readable message",
+  "data": null,
+  "errors": null
+}
+```
+الحالات المدعومة:
+- `401 Unauthorized`: عند غياب أو عدم صحة الـ JWT Token.
+- `403 Forbidden`: عند محاولة الزبون الوصول لطلبات غيره أو تعديل حالة الطلب.
+- `404 Not Found`: عند طلب مورد غير موجود.
+- `422 Unprocessable Entity`: عند فشل التحقق من الحقول أو عدم كفاية رصيد المخزون (`errors: {"stock": [...]}`).
+- `429 Too Many Requests`: عند تجاوز حد الطلبات المسموح (Rate Limiting).
+- `500 Internal Server Error`: رسالة عامة آمنة عند حدوث خطأ غير متوقع دون تسريب تفاصيل النظام.
+- `503 Service Unavailable`: عند توقف خدمة المخزون أو تجاوز مهلة الاستجابة (Deadline Exceeded).

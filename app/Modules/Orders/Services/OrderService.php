@@ -148,12 +148,23 @@ class OrderService
             });
 
             // 5. Confirm reservation in inventory service
-            $this->inventoryClient->confirmStock($reservationId, $orderRef);
+            $confirmResult = $this->inventoryClient->confirmStock($reservationId, $orderRef);
+
+            if (!$confirmResult['success']) {
+                // Confirmation was rejected by inventory service (e.g. expired or invalid)
+                throw ValidationException::withMessages([
+                    'stock' => [$confirmResult['message'] ?? 'Inventory reservation could not be confirmed.'],
+                ]);
+            }
 
             return $order;
 
         } catch (\Throwable $e) {
-            // Compensating action: Release reserved stock immediately if order saving fails
+            // Compensating action: If MySQL transaction or confirmation failed, ensure consistency
+            if (isset($order) && $order->exists) {
+                $order->update(['status' => 'cancelled']);
+                OrderPart::where('order_id', $order->id)->update(['status' => 'cancelled']);
+            }
             $this->inventoryClient->releaseStock($reservationId, $orderRef);
             throw $e;
         }

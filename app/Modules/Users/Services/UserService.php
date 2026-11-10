@@ -33,15 +33,17 @@ class UserService
     }
 
     /**
-     * Register a new user and generate token.
+     * Register a new customer user and generate JWT token.
+     * Enforces default customer role server-side. Client-supplied roles are strictly ignored.
      */
     public function register(array $data): array
     {
+        // Enforce the default customer role on the server regardless of input
         $user = User::create([
             'name'     => $data['name'],
             'email'    => $data['email'],
             'password' => Hash::make($data['password']),
-            'role'     => $data['role'] ?? 'user',
+            'role'     => User::ROLE_USER,
         ]);
 
         $token = auth('api')->login($user);
@@ -57,6 +59,25 @@ class UserService
                 'role'  => $user->role,
             ],
         ];
+    }
+
+    /**
+     * Provision a privileged user account (Internal / Trusted Admin operation).
+     * Administrative account provisioning must remain a separate trusted operation.
+     */
+    public function createPrivilegedUser(array $data, string $role): User
+    {
+        $validRoles = [User::ROLE_ADMIN, User::ROLE_SELLER, User::ROLE_USER];
+        if (!in_array($role, $validRoles, true)) {
+            throw new \InvalidArgumentException("Invalid role specified: {$role}");
+        }
+
+        return User::create([
+            'name'     => $data['name'],
+            'email'    => $data['email'],
+            'password' => Hash::make($data['password']),
+            'role'     => $role,
+        ]);
     }
 
     /**

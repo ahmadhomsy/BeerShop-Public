@@ -2,7 +2,15 @@
 
 namespace App\Exceptions;
 
+use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Auth\AuthenticationException;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
+use Illuminate\Http\Exceptions\ThrottleRequestsException;
+use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Throwable;
 
 class Handler extends ExceptionHandler
@@ -27,7 +35,8 @@ class Handler extends ExceptionHandler
             //
         });
 
-        $this->renderable(function (\Illuminate\Auth\AuthenticationException $e, $request) {
+        // 401 Unauthorized
+        $this->renderable(function (AuthenticationException $e, $request) {
             if ($request->is('api/*') || $request->expectsJson()) {
                 return response()->json([
                     'success' => false,
@@ -38,7 +47,8 @@ class Handler extends ExceptionHandler
             }
         });
 
-        $this->renderable(function (\Illuminate\Auth\Access\AuthorizationException $e, $request) {
+        // 403 Forbidden
+        $this->renderable(function (AuthorizationException $e, $request) {
             if ($request->is('api/*') || $request->expectsJson()) {
                 return response()->json([
                     'success' => false,
@@ -49,7 +59,7 @@ class Handler extends ExceptionHandler
             }
         });
 
-        $this->renderable(function (\Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException $e, $request) {
+        $this->renderable(function (AccessDeniedHttpException $e, $request) {
             if ($request->is('api/*') || $request->expectsJson()) {
                 return response()->json([
                     'success' => false,
@@ -60,18 +70,8 @@ class Handler extends ExceptionHandler
             }
         });
 
-        $this->renderable(function (\Illuminate\Validation\ValidationException $e, $request) {
-            if ($request->is('api/*') || $request->expectsJson()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Validation error.',
-                    'data'    => null,
-                    'errors'  => $e->errors(),
-                ], 422);
-            }
-        });
-
-        $this->renderable(function (\Symfony\Component\HttpKernel\Exception\NotFoundHttpException $e, $request) {
+        // 404 Not Found
+        $this->renderable(function (NotFoundHttpException $e, $request) {
             if ($request->is('api/*') || $request->expectsJson()) {
                 return response()->json([
                     'success' => false,
@@ -82,7 +82,31 @@ class Handler extends ExceptionHandler
             }
         });
 
-        $this->renderable(function (\Illuminate\Http\Exceptions\ThrottleRequestsException $e, $request) {
+        $this->renderable(function (ModelNotFoundException $e, $request) {
+            if ($request->is('api/*') || $request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Resource not found.',
+                    'data'    => null,
+                    'errors'  => null,
+                ], 404);
+            }
+        });
+
+        // 422 Validation Error
+        $this->renderable(function (ValidationException $e, $request) {
+            if ($request->is('api/*') || $request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Validation error.',
+                    'data'    => null,
+                    'errors'  => $e->errors(),
+                ], 422);
+            }
+        });
+
+        // 429 Too Many Requests
+        $this->renderable(function (ThrottleRequestsException $e, $request) {
             if ($request->is('api/*') || $request->expectsJson()) {
                 return response()->json([
                     'success' => false,
@@ -90,6 +114,42 @@ class Handler extends ExceptionHandler
                     'data'    => null,
                     'errors'  => null,
                 ], 429);
+            }
+        });
+
+        // 503 Inventory Service Unavailable
+        $this->renderable(function (InventoryServiceUnavailableException $e, $request) {
+            if ($request->is('api/*') || $request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Inventory service temporarily unavailable',
+                    'data'    => null,
+                    'errors'  => null,
+                ], 503);
+            }
+        });
+
+        // 500 Internal Server Error & general catch-all (strictly sanitized, no stack traces)
+        $this->renderable(function (Throwable $e, $request) {
+            if ($request->is('api/*') || $request->expectsJson()) {
+                $status = 500;
+                $message = 'An unexpected internal server error occurred.';
+
+                if ($e instanceof HttpExceptionInterface) {
+                    $status = $e->getStatusCode();
+                    if ($status === 503) {
+                        $message = 'Inventory service temporarily unavailable';
+                    } elseif ($status !== 500 && !empty($e->getMessage())) {
+                        $message = $e->getMessage();
+                    }
+                }
+
+                return response()->json([
+                    'success' => false,
+                    'message' => $message,
+                    'data'    => null,
+                    'errors'  => null,
+                ], $status);
             }
         });
     }

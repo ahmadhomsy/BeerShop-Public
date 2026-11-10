@@ -36,10 +36,12 @@ class AuthController extends Controller
 
     /**
      * User registration with instant JWT.
+     * Public registration strictly extracts only customer credentials.
      */
     public function register(RegisterRequest $request): JsonResponse
     {
-        $result = $this->userService->register($request->validated());
+        $data = $request->safe()->only(['name', 'email', 'password']);
+        $result = $this->userService->register($data);
 
         return $this->successResponse($result, 'User registered successfully.', 201);
     }
