@@ -64,7 +64,8 @@ class OrderController extends Controller
     public function store(StoreOrderRequest $request): JsonResponse
     {
         $user = auth('api')->user();
-        $order = $this->orderService->create($user, $request->validated());
+        $idempotencyKey = $request->header('Idempotency-Key') ?? $request->header('X-Idempotency-Key');
+        $order = $this->orderService->create($user, $request->validated(), $idempotencyKey);
 
         return $this->successResponse($order, 'Order placed successfully.', 201);
     }

@@ -297,9 +297,10 @@ class InventoryReliabilityAndLifecycleTest extends TestCase
     }
 
     /**
-     * Requirement 3 & 5: Confirmation network failure cancels persisted order, releases, and returns 503.
+     * Requirement 2 & Hotfix: Confirmation network failure must NOT blindly cancel order or release stock.
+     * Order remains active ('0'), reconciliation outbox records 'pending_confirmation', and 503 is returned.
      */
-    public function test_confirmation_service_outage_cancels_persisted_order_and_returns_503(): void
+    public function test_confirmation_service_outage_preserves_order_and_records_pending_confirmation(): void
     {
         $resId = 'res-outage-' . uniqid();
 
@@ -318,11 +319,8 @@ class InventoryReliabilityAndLifecycleTest extends TestCase
             ->with($resId, Mockery::type('string'))
             ->andThrow(new InventoryServiceUnavailableException('Inventory service temporarily unavailable'));
 
-        // Release compensation called
-        $mockClient->shouldReceive('releaseStock')
-            ->once()
-            ->with($resId, Mockery::type('string'))
-            ->andReturn(['success' => true]);
+        // Release compensation must NEVER be called blindly on confirmation timeout
+        $mockClient->shouldNotReceive('releaseStock');
 
         $this->app->instance(InventoryClient::class, $mockClient);
 
@@ -343,6 +341,11 @@ class InventoryReliabilityAndLifecycleTest extends TestCase
         $response->assertStatus(503);
         $order = Order::where('email', 'outage_confirm@test.com')->first();
         $this->assertNotNull($order);
-        $this->assertSame('cancelled', $order->status);
+        $this->assertSame('0', $order->status); // Order kept active for reconciliation
+
+        // Outbox entry recorded in pending_confirmation
+        $reconciliation = \App\Models\InventoryReconciliation::where('order_id', $order->id)->first();
+        $this->assertNotNull($reconciliation);
+        $this->assertSame(\App\Models\InventoryReconciliation::STATE_PENDING_CONFIRMATION, $reconciliation->workflow_state);
     }
 }

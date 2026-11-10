@@ -128,6 +128,33 @@ services:
       retries: 5
       start_period: 5s
 
+  # 6. Inventory Saga Reconciliation Worker (Background Daemon)
+  reconciliation_worker:
+    image: beershop-app:latest
+    container_name: beershop_reconciliation_worker
+    restart: unless-stopped
+    command: php artisan inventory:reconcile --daemon --interval=5
+    working_dir: /var/www
+    environment:
+      DB_HOST: db_main
+      DB_PORT: 3306
+      DB_DATABASE: ${DB_DATABASE:-aboodm4_beershop}
+      DB_USERNAME: ${DB_USERNAME:-beershop_user}
+      DB_PASSWORD: ${DB_PASSWORD:-beershop_password}
+      INVENTORY_GRPC_HOST: inventory_service
+      INVENTORY_GRPC_PORT: 50051
+    volumes:
+      - ./:/var/www
+    networks:
+      - beershop_net
+    depends_on:
+      app:
+        condition: service_healthy
+      db_main:
+        condition: service_healthy
+      inventory_service:
+        condition: service_healthy
+
 networks:
   beershop_net:
     driver: bridge
