@@ -47,20 +47,16 @@ class ProductService implements ProductCatalogInterface
 
     /**
      * Find single product by ID with current live stock from Inventory Microservice.
+     * When inventory microservice is unavailable, propagates InventoryServiceUnavailableException (HTTP 503).
      */
     public function find(int $id): ?Product
     {
         $product = Product::with(['category', 'secondcategory', 'user:id,name,email', 'images'])->find($id);
 
         if ($product) {
-            try {
-                $stockInfo = $this->inventoryClient->getStock($id);
-                $product->stock = $stockInfo;
-                $product->available_stock = $stockInfo['available_stock'] ?? 0;
-            } catch (\Throwable $e) {
-                $product->stock = null;
-                $product->available_stock = null;
-            }
+            $stockInfo = $this->inventoryClient->getStock($id);
+            $product->stock = $stockInfo;
+            $product->available_stock = $stockInfo['available_stock'] ?? 0;
         }
 
         return $product;

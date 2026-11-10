@@ -5,18 +5,18 @@ services:
     container_name: beershop_db_main
     restart: unless-stopped
     environment:
-      MYSQL_DATABASE: aboodm4_beershop
-      MYSQL_USER: beershop_user
-      MYSQL_PASSWORD: beershop_password
-      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_DATABASE: ${DB_DATABASE:-aboodm4_beershop}
+      MYSQL_USER: ${DB_USERNAME:-beershop_user}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-beershop_password}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root_password}
     ports:
-      - "3307:3306"
+      - "127.0.0.1:3307:3306"
     volumes:
       - db_main_data:/var/lib/mysql
     networks:
       - beershop_net
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot_password"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASSWORD:-root_password}"]
       interval: 5s
       timeout: 5s
       retries: 6
@@ -28,17 +28,17 @@ services:
     container_name: beershop_db_inventory
     restart: unless-stopped
     environment:
-      POSTGRES_DB: inventory_db
-      POSTGRES_USER: inventory_user
-      POSTGRES_PASSWORD: inventory_password
+      POSTGRES_DB: ${INVENTORY_DB_NAME:-inventory_db}
+      POSTGRES_USER: ${INVENTORY_DB_USER:-inventory_user}
+      POSTGRES_PASSWORD: ${INVENTORY_DB_PASSWORD:-inventory_password}
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"
     volumes:
       - db_inventory_data:/var/lib/postgresql/data
     networks:
       - beershop_net
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U inventory_user -d inventory_db"]
+      test: ["CMD-SHELL", "pg_isready -U ${INVENTORY_DB_USER:-inventory_user} -d ${INVENTORY_DB_NAME:-inventory_db}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -55,9 +55,9 @@ services:
     environment:
       DB_HOST: db_main
       DB_PORT: 3306
-      DB_DATABASE: aboodm4_beershop
-      DB_USERNAME: beershop_user
-      DB_PASSWORD: beershop_password
+      DB_DATABASE: ${DB_DATABASE:-aboodm4_beershop}
+      DB_USERNAME: ${DB_USERNAME:-beershop_user}
+      DB_PASSWORD: ${DB_PASSWORD:-beershop_password}
       INVENTORY_GRPC_HOST: inventory_service
       INVENTORY_GRPC_PORT: 50051
     volumes:
@@ -110,12 +110,12 @@ services:
     environment:
       DB_HOST: db_inventory
       DB_PORT: 5432
-      DB_NAME: inventory_db
-      DB_USER: inventory_user
-      DB_PASSWORD: inventory_password
+      DB_NAME: ${INVENTORY_DB_NAME:-inventory_db}
+      DB_USER: ${INVENTORY_DB_USER:-inventory_user}
+      DB_PASSWORD: ${INVENTORY_DB_PASSWORD:-inventory_password}
       GRPC_PORT: 50051
     ports:
-      - "50051:50051"
+      - "127.0.0.1:50051:50051"
     networks:
       - beershop_net
     depends_on:

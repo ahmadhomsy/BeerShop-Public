@@ -8,6 +8,9 @@ use Illuminate\Database\Eloquent\Model;
 class SecondCategory extends Model
 {
     use HasFactory;
+
+    protected $guarded = [];
+
     public function category(){
         return $this->belongsTo(category::class, 'category_id');
     }

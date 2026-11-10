@@ -18,8 +18,31 @@ fi
 # 3. Ensure storage & bootstrap permissions
 chmod -R 777 /var/www/storage /var/www/bootstrap/cache 2>/dev/null || true
 
-# 4. Wait for MySQL database
-echo "[Entrypoint] Waiting for MySQL database (db_main:3306)..."
+# 4. Safe and idempotent application secrets initialization
+# 4a. Initialize APP_KEY if missing or empty
+if ! grep -q "^APP_KEY=.\+" .env 2>/dev/null; then
+    echo "[Entrypoint] APP_KEY is uninitialized. Generating application key..."
+    php artisan key:generate --force --no-interaction >/dev/null
+    echo "[Entrypoint] APP_KEY successfully initialized."
+else
+    echo "[Entrypoint] APP_KEY already initialized, preserving existing key."
+fi
+
+# 4b. Initialize JWT_SECRET if missing or empty
+if ! grep -q "^JWT_SECRET=" .env 2>/dev/null; then
+    echo "JWT_SECRET=" >> .env
+fi
+
+if ! grep -q "^JWT_SECRET=.\+" .env 2>/dev/null; then
+    echo "[Entrypoint] JWT_SECRET is uninitialized. Generating JWT secret..."
+    php artisan jwt:secret --force --no-interaction >/dev/null
+    echo "[Entrypoint] JWT_SECRET successfully initialized."
+else
+    echo "[Entrypoint] JWT_SECRET already initialized, preserving existing secret."
+fi
+
+# 5. Wait for MySQL database
+echo "[Entrypoint] Waiting for MySQL database (${DB_HOST:-db_main}:${DB_PORT:-3306})..."
 until php -r '
 $host = getenv("DB_HOST") ?: "db_main";
 $port = getenv("DB_PORT") ?: 3306;
@@ -39,7 +62,7 @@ done
 
 echo "[Entrypoint] MySQL is ready!"
 
-# 5. Run database migrations & seeds
+# 6. Run database migrations & seeds
 echo "[Entrypoint] Running database migrations..."
 php artisan migrate --force
 
