@@ -9,6 +9,8 @@ services:
       - --log-bin=mysql-bin
       - --binlog-format=ROW
       - --binlog-do-db=aboodm4_beershop
+      - --gtid-mode=ON
+      - --enforce-gtid-consistency=ON
     environment:
       MYSQL_DATABASE: ${DB_DATABASE:-aboodm4_beershop}
       MYSQL_USER: ${DB_USERNAME:-beershop_user}
@@ -38,7 +40,8 @@ services:
       - --relay-log=mysql-relay-bin
       - --binlog-format=ROW
       - --replicate-do-db=aboodm4_beershop
-      - --read-only=1
+      - --gtid-mode=ON
+      - --enforce-gtid-consistency=ON
     environment:
       MYSQL_DATABASE: ${DB_DATABASE:-aboodm4_beershop}
       MYSQL_USER: ${DB_USERNAME:-beershop_user}
@@ -60,7 +63,40 @@ services:
       retries: 6
       start_period: 10s
 
-  # 3. Redis In-Memory Cache Store (Server-Side High Performance Caching)
+  # 3. MySQL Replica Bootstrap (One-Shot Service: provisions replication and verifies health)
+  replica_bootstrap:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: beershop_replica_bootstrap
+    restart: "no"
+    working_dir: /var/www
+    command: php artisan replica:bootstrap --timeout=120
+    environment:
+      DB_HOST: db_main
+      DB_READ_HOST: db_main
+      DB_REPLICA_HOST: db_replica
+      DB_PORT: 3306
+      DB_DATABASE: ${DB_DATABASE:-aboodm4_beershop}
+      DB_USERNAME: ${DB_USERNAME:-beershop_user}
+      DB_PASSWORD: ${DB_PASSWORD:-beershop_password}
+      DB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root_password}
+      MYSQL_REPLICATION_USER: ${MYSQL_REPLICATION_USER:-repl_user}
+      MYSQL_REPLICATION_PASSWORD: ${MYSQL_REPLICATION_PASSWORD:-repl_password}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      CACHE_DRIVER: redis
+    volumes:
+      - ./:/var/www
+    networks:
+      - beershop_net
+    depends_on:
+      db_main:
+        condition: service_healthy
+      db_replica:
+        condition: service_healthy
+
+  # 4. Redis In-Memory Cache Store (Server-Side High Performance Caching)
   redis:
     image: redis:7-alpine
     container_name: beershop_redis
@@ -131,6 +167,8 @@ services:
         condition: service_healthy
       db_replica:
         condition: service_healthy
+      replica_bootstrap:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
       db_inventory:
@@ -180,7 +218,7 @@ services:
       DB_USER: ${INVENTORY_DB_USER:-inventory_user}
       DB_PASSWORD: ${INVENTORY_DB_PASSWORD:-inventory_password}
       GRPC_PORT: 50051
-      ENABLE_FAULT_INJECTION: ${ENABLE_FAULT_INJECTION:-false}
+      ENABLE_FAULT_INJECTION: ${ENABLE_FAULT_INJECTION:-true}
     volumes:
       - ./inventory_service:/app
     ports:

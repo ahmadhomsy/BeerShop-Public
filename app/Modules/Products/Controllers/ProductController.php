@@ -59,29 +59,28 @@ class ProductController extends Controller
             return $this->errorResponse('Product not found.', 404);
         }
 
-        // Deterministic, canonical representation for ETag calculation
-        $etagRepresentation = [
-            'id'                 => $product->id,
-            'name'               => $product->name,
-            'price'              => (string) $product->price,
-            'description'        => $product->description,
-            'category_id'        => $product->category_id,
-            'second_category_id' => $product->second_category_id,
-            'updated_at'         => optional($product->updated_at)->toIso8601String(),
-            'stock'              => $product->stock ?? null,
-            'available_stock'    => $product->available_stock ?? null,
-        ];
-
-        $etag = '"' . sha1(json_encode($etagRepresentation)) . '"';
+        // Generate full serialized JSON response to compute canonical ETag across all attributes and relations
+        $response = $this->successResponse($product, 'Product details retrieved.');
+        $content = $response->getContent();
+        $etag = '"' . sha1($content) . '"';
 
         // Check incoming If-None-Match header
         $ifNoneMatch = $request->header('If-None-Match');
         if ($ifNoneMatch) {
-            $clientEtags = array_map('trim', explode(',', $ifNoneMatch));
+            $clientEtags = array_map(function ($val) {
+                $trimmed = trim($val);
+                if (str_starts_with($trimmed, 'W/')) {
+                    $trimmed = substr($trimmed, 2);
+                }
+                return $trimmed;
+            }, explode(',', $ifNoneMatch));
+
+            $cleanEtag = trim($etag, '"');
+
             if (
+                in_array('*', $clientEtags, true) ||
                 in_array($etag, $clientEtags, true) ||
-                in_array(trim($etag, '"'), $clientEtags, true) ||
-                in_array('*', $clientEtags, true)
+                in_array($cleanEtag, $clientEtags, true)
             ) {
                 return response('', 304, [
                     'ETag'          => $etag,
@@ -90,9 +89,12 @@ class ProductController extends Controller
             }
         }
 
-        $response = $this->successResponse($product, 'Product details retrieved.');
         $response->headers->set('ETag', $etag);
         $response->headers->set('Cache-Control', 'public, max-age=0, must-revalidate');
+
+        if ($request->isMethod('HEAD')) {
+            $response->setContent('');
+        }
 
         return $response;
     }

@@ -358,6 +358,10 @@ class OrderService
                 throw $txException;
             }
 
+            // Read-after-write consistency: pin user immediately after MySQL order transaction commits.
+            // Guarantees immediate visibility even if remote ConfirmStock encounters a transport failure (pending_confirmation).
+            app(\App\Services\Database\ReadAfterWriteManager::class)->pinUser($user->id);
+
             // 5. Confirm reservation in inventory service OUTSIDE of MySQL transaction
             try {
                 $confirmResult = $this->inventoryClient->confirmStock($reservationId, $orderRef);

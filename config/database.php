@@ -73,7 +73,7 @@ return [
             'driver' => 'mysql',
             'host' => env('DB_REPLICA_HOST', env('DB_READ_HOST', '127.0.0.1')),
             'port' => env('DB_REPLICA_PORT', env('DB_PORT', '3306')),
-            'database' => env('DB_DATABASE', 'forge'),
+            'database' => (env('DB_DATABASE') && !str_contains(env('DB_DATABASE'), 'sqlite')) ? env('DB_DATABASE') : env('DB_MYSQL_DATABASE', 'aboodm4_beershop'),
             'username' => env('DB_USERNAME', 'forge'),
             'password' => env('DB_PASSWORD', ''),
             'charset' => 'utf8mb4',

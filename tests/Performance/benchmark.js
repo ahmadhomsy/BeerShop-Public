@@ -15,6 +15,7 @@ const TEST_EMAIL = __ENV.TEST_EMAIL || 'benchmark_customer@example.com';
 const TEST_PASSWORD = __ENV.TEST_PASSWORD || 'password123';
 
 export const options = {
+    summaryTrendStats: ['avg', 'min', 'med', 'max', 'p(90)', 'p(95)', 'p(99)'],
     stages: [
         { duration: '5s', target: 10 },   // Ramp-up to 10 VUs
         { duration: '20s', target: 10 },  // Steady-state load

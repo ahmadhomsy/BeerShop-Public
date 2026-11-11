@@ -8,7 +8,7 @@ on:
 
 jobs:
   backend-ci:
-    name: Backend CI & Real Integration
+    name: Backend CI & Real Infrastructure Integration
     runs-on: ubuntu-latest
 
     services:
@@ -21,7 +21,39 @@ jobs:
           MYSQL_ROOT_PASSWORD: root_password
         ports:
           - 3306:3306
-        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=5
+        options: >-
+          --health-cmd="mysqladmin ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+          --server-id=1
+          --log-bin=mysql-bin
+          --binlog-format=ROW
+          --binlog-do-db=aboodm4_beershop
+          --gtid-mode=ON
+          --enforce-gtid-consistency=ON
+
+      mysql-replica:
+        image: mysql:8.0
+        env:
+          MYSQL_DATABASE: aboodm4_beershop
+          MYSQL_USER: beershop_user
+          MYSQL_PASSWORD: beershop_password
+          MYSQL_ROOT_PASSWORD: root_password
+        ports:
+          - 3308:3306
+        options: >-
+          --health-cmd="mysqladmin ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+          --server-id=2
+          --log-bin=mysql-bin
+          --relay-log=mysql-relay-bin
+          --binlog-format=ROW
+          --replicate-do-db=aboodm4_beershop
+          --gtid-mode=ON
+          --enforce-gtid-consistency=ON
 
       postgres:
         image: postgres:16-alpine
@@ -49,6 +81,9 @@ jobs:
           php-version: '8.2'
           extensions: mbstring, xml, ctype, iconv, intl, pdo, pdo_mysql, pdo_pgsql, sqlite3, pdo_sqlite, grpc
           coverage: none
+
+      - name: Install MySQL client binaries
+        run: sudo apt-get update && sudo apt-get install -y default-mysql-client
 
       - name: Setup Python 3.12
         uses: actions/setup-python@v5
@@ -159,3 +194,35 @@ jobs:
           DB_USER: inventory_user
           DB_PASSWORD: inventory_password
         run: python tests/Concurrency/test_race_condition.py
+
+      - name: Bootstrap and Verify MySQL GTID Read Replica
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_READ_HOST: 127.0.0.1
+          DB_REPLICA_PORT: 3308
+          DB_DATABASE: aboodm4_beershop
+          DB_ROOT_PASSWORD: root_password
+          MYSQL_REPLICATION_USER: repl_user
+          MYSQL_REPLICATION_PASSWORD: repl_password
+        run: |
+          php artisan replica:bootstrap --timeout=60
+          php artisan replica:status
+
+      - name: Run Real Redis & Primary/Replica Infrastructure Integration Suite
+        env:
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_READ_HOST: 127.0.0.1
+          DB_REPLICA_PORT: 3308
+          DB_DATABASE: aboodm4_beershop
+          DB_USERNAME: beershop_user
+          DB_PASSWORD: beershop_password
+          REDIS_HOST: 127.0.0.1
+          REDIS_PORT: 6379
+          CACHE_DRIVER: redis
+          INVENTORY_GRPC_HOST: 127.0.0.1
+          INVENTORY_GRPC_PORT: 50051
+          ENABLE_FAULT_INJECTION: "true"
+        run: vendor/bin/phpunit tests/Integration/RealReplicationAndRedisIntegrationTest.php
