@@ -168,6 +168,9 @@ class FreshInstallationAndSecretsTest extends TestCase
      */
     public function test_demo_login_jwt_issuance_and_authenticated_endpoint_access(): void
     {
+        // Clear rate limiter cache from prior tests
+        \Illuminate\Support\Facades\Cache::flush();
+
         // 1. Ensure demo customer exists
         User::where('email', 'cc@gmail.com')->delete();
         $customer = User::create([

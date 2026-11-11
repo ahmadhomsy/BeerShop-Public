@@ -9,5 +9,6 @@ Route::prefix('products')->group(function () {
 
     Route::middleware(['auth:api', 'role:admin,seller'])->group(function () {
         Route::post('/', [ProductController::class, 'store']);
+        Route::match(['put', 'patch'], '{id}', [ProductController::class, 'update'])->whereNumber('id');
     });
 });

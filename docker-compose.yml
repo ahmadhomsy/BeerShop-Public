@@ -1,9 +1,14 @@
 services:
-  # 1. Main Database (MySQL for Laravel Application)
+  # 1. Main Database (MySQL 8 Primary for Laravel Application Writes)
   db_main:
     image: mysql:8.0
     container_name: beershop_db_main
     restart: unless-stopped
+    command:
+      - --server-id=1
+      - --log-bin=mysql-bin
+      - --binlog-format=ROW
+      - --binlog-do-db=aboodm4_beershop
     environment:
       MYSQL_DATABASE: ${DB_DATABASE:-aboodm4_beershop}
       MYSQL_USER: ${DB_USERNAME:-beershop_user}
@@ -22,7 +27,59 @@ services:
       retries: 6
       start_period: 10s
 
-  # 2. Inventory Database (PostgreSQL for Polyglot Inventory Microservice)
+  # 2. Read Replica Database (MySQL 8 Read-Only Replica for Scaling Catalog & Order Reads)
+  db_replica:
+    image: mysql:8.0
+    container_name: beershop_db_replica
+    restart: unless-stopped
+    command:
+      - --server-id=2
+      - --log-bin=mysql-bin
+      - --relay-log=mysql-relay-bin
+      - --binlog-format=ROW
+      - --replicate-do-db=aboodm4_beershop
+      - --read-only=1
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE:-aboodm4_beershop}
+      MYSQL_USER: ${DB_USERNAME:-beershop_user}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-beershop_password}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root_password}
+    ports:
+      - "127.0.0.1:3308:3306"
+    volumes:
+      - db_replica_data:/var/lib/mysql
+    networks:
+      - beershop_net
+    depends_on:
+      db_main:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASSWORD:-root_password}"]
+      interval: 5s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  # 3. Redis In-Memory Cache Store (Server-Side High Performance Caching)
+  redis:
+    image: redis:7-alpine
+    container_name: beershop_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - beershop_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 3s
+
+  # 4. Inventory Database (PostgreSQL for Polyglot Inventory Microservice)
   db_inventory:
     image: postgres:16-alpine
     container_name: beershop_db_inventory
@@ -44,7 +101,7 @@ services:
       retries: 5
       start_period: 5s
 
-  # 3. Main Application (Laravel PHP-FPM)
+  # 5. Main Application (Laravel PHP-FPM with Read/Write Database Connections & Redis Caching)
   app:
     build:
       context: .
@@ -54,10 +111,15 @@ services:
     working_dir: /var/www
     environment:
       DB_HOST: db_main
+      DB_READ_HOST: db_replica
       DB_PORT: 3306
       DB_DATABASE: ${DB_DATABASE:-aboodm4_beershop}
       DB_USERNAME: ${DB_USERNAME:-beershop_user}
       DB_PASSWORD: ${DB_PASSWORD:-beershop_password}
+      DB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root_password}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      CACHE_DRIVER: redis
       INVENTORY_GRPC_HOST: inventory_service
       INVENTORY_GRPC_PORT: 50051
     volumes:
@@ -66,6 +128,10 @@ services:
       - beershop_net
     depends_on:
       db_main:
+        condition: service_healthy
+      db_replica:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       db_inventory:
         condition: service_healthy
@@ -78,7 +144,7 @@ services:
       retries: 12
       start_period: 60s
 
-  # 4. Nginx Web Server
+  # 6. Nginx Web Server
   webserver:
     image: nginx:alpine
     container_name: beershop_webserver
@@ -100,7 +166,7 @@ services:
       retries: 5
       start_period: 5s
 
-  # 5. Polyglot Inventory Microservice (Python + gRPC + PostgreSQL)
+  # 7. Polyglot Inventory Microservice (Python + gRPC + PostgreSQL)
   inventory_service:
     build:
       context: ./inventory_service
@@ -131,7 +197,7 @@ services:
       retries: 5
       start_period: 5s
 
-  # 6. Inventory Saga Reconciliation Worker (Background Daemon)
+  # 8. Inventory Saga Reconciliation Worker (Background Daemon)
   reconciliation_worker:
     image: beershop-app:latest
     container_name: beershop_reconciliation_worker
@@ -140,10 +206,14 @@ services:
     working_dir: /var/www
     environment:
       DB_HOST: db_main
+      DB_READ_HOST: db_replica
       DB_PORT: 3306
       DB_DATABASE: ${DB_DATABASE:-aboodm4_beershop}
       DB_USERNAME: ${DB_USERNAME:-beershop_user}
       DB_PASSWORD: ${DB_PASSWORD:-beershop_password}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      CACHE_DRIVER: redis
       INVENTORY_GRPC_HOST: inventory_service
       INVENTORY_GRPC_PORT: 50051
     volumes:
@@ -155,6 +225,10 @@ services:
         condition: service_healthy
       db_main:
         condition: service_healthy
+      db_replica:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
       inventory_service:
         condition: service_healthy
 
@@ -164,4 +238,6 @@ networks:
 
 volumes:
   db_main_data:
+  db_replica_data:
   db_inventory_data:
+  redis_data:

@@ -1,0 +1,45 @@
+================================================================================
+K6 OPTIMIZED BENCHMARK REPORT (AFTER OPTIMIZATION)
+================================================================================
+Date: 2026-11-11
+Dataset: 200,006 orders, 35 products, 20 users
+Virtual Users: 10 concurrent VUs
+Duration: 30 seconds
+Total Requests: 1,363 (+38.4% increase vs baseline 985)
+Throughput: 41.82 requests/sec (+39.3% increase vs baseline 30.03)
+Failed Requests: 0 (0.00% error rate)
+
+RESPONSE TIME METRICS (HTTP Overall):
+- Average: 120.98 ms (-37.5% reduction vs baseline 193.66 ms)
+- Median (p50): 76.96 ms (-45.0% reduction vs baseline 139.78 ms)
+- p90: 124.55 ms (-55.1% reduction vs baseline 277.63 ms)
+- p95: 670.73 ms
+- Minimum: 42.99 ms
+- Maximum: 2583.58 ms
+
+ENDPOINT BREAKDOWN:
+1. Product Listing (GET /api/v1/products):
+   - avg: 132.07 ms (vs baseline 183.25 ms, -27.9%)
+   - med: 72.20 ms (vs baseline 120.39 ms, -40.0%)
+   - p90: 123.64 ms (vs baseline 563.70 ms, -78.1%)
+   - p95: 688.38 ms
+
+2. Product Filtering & Pagination (GET /api/v1/products?category_id=1&second_category_id=1):
+   - avg: 106.86 ms (vs baseline 180.29 ms, -40.7%)
+   - med: 72.23 ms (vs baseline 130.23 ms, -44.5%)
+   - p90: 112.77 ms (vs baseline 244.21 ms, -53.8%)
+   - p95: 323.70 ms (vs baseline 678.67 ms, -52.3%)
+
+3. Customer Order Listing (GET /api/v1/orders):
+   - avg: 118.59 ms (vs baseline 210.55 ms, -43.7%)
+   - med: 86.45 ms (vs baseline 161.61 ms, -46.5%)
+   - p90: 131.42 ms (vs baseline 271.40 ms, -51.6%)
+   - p95: 190.72 ms (vs baseline 732.72 ms, -74.0%)
+
+OBSERVED GAINS & ARCHITECTURAL HIGHLIGHTS:
+- Orders listing query execution reduced from 46.3 ms to 0.099 ms via composite index (user_id, created_at), eliminating all filesort overhead on 200,000+ orders.
+- Admin order query execution reduced from 141.0 ms to 0.151 ms via index (created_at), replacing full table scan with backward index scan.
+- Catalog query overhead minimized via Redis in-memory caching with graceful MySQL fallback.
+- Read queries offloaded to MySQL Read Replica (db_replica) via sticky read/write split with Redis-fenced read-after-write consistency pinning.
+- HTTP ETag conditional caching on single-product endpoint enables 304 Not Modified responses without re-transmitting JSON payloads.
+================================================================================

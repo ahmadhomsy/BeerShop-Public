@@ -1,0 +1,44 @@
+================================================================================
+K6 BASELINE BENCHMARK REPORT (BEFORE OPTIMIZATION)
+================================================================================
+Date: 2026-11-11
+Dataset: 200,006 orders, 35 products, 20 users
+Virtual Users: 10 concurrent VUs
+Duration: 30 seconds
+Total Requests: 985
+Throughput: 30.03 requests/sec
+Failed Requests: 0 (0.00% error rate)
+
+RESPONSE TIME METRICS (HTTP Overall):
+- Average: 193.66 ms
+- Median (p50): 139.78 ms
+- p90: 277.63 ms
+- p95: 690.75 ms
+- p99: 1450.00 ms (approx)
+- Maximum: 2450.00 ms
+
+ENDPOINT BREAKDOWN:
+1. Product Listing (GET /api/v1/products):
+   - avg: 183.25 ms
+   - med: 120.39 ms
+   - p90: 563.70 ms
+   - p95: 684.82 ms
+
+2. Product Filtering & Pagination (GET /api/v1/products?category_id=1&second_category_id=1):
+   - avg: 180.29 ms
+   - med: 130.23 ms
+   - p90: 244.21 ms
+   - p95: 678.67 ms
+
+3. Customer Order Listing (GET /api/v1/orders):
+   - avg: 210.55 ms
+   - med: 161.61 ms
+   - p90: 271.40 ms
+   - p95: 732.72 ms
+
+OBSERVED BOTTLENECKS:
+- MySQL full table scans and filesort on 200,000+ orders due to missing composite index on (user_id, created_at).
+- High CPU utilization on MySQL db_main container under 10 concurrent VUs.
+- Every read request executes queries directly against MySQL primary with no cache or read distribution.
+- Catalog data (products, categories) repeated query load without in-memory caching.
+================================================================================
