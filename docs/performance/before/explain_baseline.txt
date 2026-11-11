@@ -1,0 +1,12 @@
+id	select_type	table	partitions	type	possible_keys	key	key_len	ref	rows	filtered	Extra
+1	SIMPLE	orders	NULL	ref	orders_user_id_foreign	orders_user_id_foreign	8	const	16250	100.00	Using filesort
+EXPLAIN
+-> Limit: 10 row(s)  (cost=2996 rows=10) (actual time=46.3..46.3 rows=10 loops=1)\n    -> Sort: orders.created_at DESC, limit input to 10 row(s) per chunk  (cost=2996 rows=16250) (actual time=46.3..46.3 rows=10 loops=1)\n        -> Index lookup on orders using orders_user_id_foreign (user_id=9)  (cost=2996 rows=16250) (actual time=0.0399..42.4 rows=9575 loops=1)\n
+id	select_type	table	partitions	type	possible_keys	key	key_len	ref	rows	filtered	Extra
+1	SIMPLE	orders	NULL	ALL	NULL	NULL	NULL	NULL	197326	100.00	Using filesort
+EXPLAIN
+-> Limit: 10 row(s)  (cost=20190 rows=10) (actual time=141..141 rows=10 loops=1)\n    -> Sort: orders.created_at DESC, limit input to 10 row(s) per chunk  (cost=20190 rows=197326) (actual time=141..141 rows=10 loops=1)\n        -> Table scan on orders  (cost=20190 rows=197326) (actual time=0.0226..99.3 rows=200006 loops=1)\n
+id	select_type	table	partitions	type	possible_keys	key	key_len	ref	rows	filtered	Extra
+1	SIMPLE	products	NULL	ref	products_category_id_foreign,products_second_category_id_foreign	products_second_category_id_foreign	8	const	1	17.14	Using where; Using filesort
+EXPLAIN
+-> Limit: 10 row(s)  (cost=0.267 rows=1) (actual time=0.0258..0.0259 rows=1 loops=1)\n    -> Sort: products.created_at DESC, limit input to 10 row(s) per chunk  (cost=0.267 rows=1) (actual time=0.0252..0.0253 rows=1 loops=1)\n        -> Filter: (products.category_id = 1)  (cost=0.267 rows=1) (actual time=0.0155..0.0178 rows=1 loops=1)\n            -> Index lookup on products using products_second_category_id_foreign (second_category_id=1)  (cost=0.267 rows=1) (actual time=0.0143..0.0165 rows=1 loops=1)\n

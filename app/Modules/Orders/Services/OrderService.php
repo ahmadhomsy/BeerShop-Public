@@ -380,6 +380,9 @@ class OrderService
                     'next_retry_at'  => null,
                 ]);
 
+                // Read-after-write consistency: pin user to primary connection
+                app(\App\Services\Database\ReadAfterWriteManager::class)->pinUser($user->id);
+
                 return $order;
             }
 
