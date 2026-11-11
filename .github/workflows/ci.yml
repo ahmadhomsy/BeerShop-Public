@@ -108,6 +108,9 @@ jobs:
           php artisan migrate --database=sqlite --force
 
       - name: Run Fast SQLite Unit & Feature Test Suite
+        env:
+          INVENTORY_GRPC_HOST: 127.0.0.1
+          INVENTORY_GRPC_PORT: 50051
         run: php artisan test
 
       - name: Run MySQL Migrations
