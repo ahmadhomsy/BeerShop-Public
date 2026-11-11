@@ -6,7 +6,9 @@ use App\Exceptions\InventoryServiceUnavailableException;
 use App\Models\InventoryReconciliation;
 use App\Models\Order;
 use App\Models\OrderPart;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class InventoryReconciliationService
 {
@@ -22,7 +24,6 @@ class InventoryReconciliationService
      */
     public static function hashPayload(array $payload): string
     {
-        // Extract relevant payload fields for deterministic hashing
         $normalized = [
             'name'    => (string) ($payload['name'] ?? ''),
             'email'   => (string) ($payload['email'] ?? ''),
@@ -39,7 +40,6 @@ class InventoryReconciliationService
                     'quantity'   => (int) ($item['quantity'] ?? 0),
                 ];
             }
-            // Sort items by product_id for order-independent hashing
             usort($normalized['items'], function ($a, $b) {
                 return $a['product_id'] <=> $b['product_id'];
             });
@@ -49,26 +49,47 @@ class InventoryReconciliationService
     }
 
     /**
-     * Reconcile a batch of pending reconciliation records.
+     * Reconcile a batch of pending reconciliation records with concurrency-safe atomic lease.
      *
      * @param int $limit Maximum records to process
      * @return array Summary of processed items
      */
     public function reconcilePending(int $limit = 50): array
     {
-        $records = InventoryReconciliation::whereIn('workflow_state', [
-                InventoryReconciliation::STATE_PENDING_CONFIRMATION,
-                InventoryReconciliation::STATE_PENDING_RELEASE,
-            ])
-            ->where(function ($query) {
-                $query->whereNull('next_retry_at')
-                      ->orWhere('next_retry_at', '<=', now());
-            })
-            ->where('retry_count', '<', 10)
-            ->orderBy('next_retry_at', 'asc')
-            ->orderBy('id', 'asc')
-            ->limit($limit)
-            ->get();
+        $workerId = gethostname() . ':' . getmypid() . ':' . Str::random(8);
+        $now = now();
+
+        // 1. Atomically claim a batch of eligible records in a fast database transaction
+        $claimedRecords = DB::transaction(function () use ($limit, $workerId, $now) {
+            $candidates = InventoryReconciliation::whereIn('workflow_state', [
+                    InventoryReconciliation::STATE_PENDING_RESERVATION,
+                    InventoryReconciliation::STATE_PENDING_CONFIRMATION,
+                    InventoryReconciliation::STATE_PENDING_RELEASE,
+                ])
+                ->where(function ($query) use ($now) {
+                    $query->whereNull('next_retry_at')
+                          ->orWhere('next_retry_at', '<=', $now);
+                })
+                ->where(function ($query) use ($now) {
+                    $query->whereNull('locked_until')
+                          ->orWhere('locked_until', '<=', $now);
+                })
+                ->where('retry_count', '<', 10)
+                ->orderBy('next_retry_at', 'asc')
+                ->orderBy('id', 'asc')
+                ->limit($limit)
+                ->get();
+
+            $ids = $candidates->pluck('id')->all();
+            if (!empty($ids)) {
+                InventoryReconciliation::whereIn('id', $ids)->update([
+                    'locked_until' => $now->copy()->addMinutes(2),
+                    'locked_by'    => $workerId,
+                ]);
+            }
+
+            return $candidates;
+        });
 
         $summary = [
             'processed' => 0,
@@ -78,9 +99,24 @@ class InventoryReconciliationService
             'failed'    => 0,
         ];
 
-        foreach ($records as $record) {
+        // 2. Process each claimed record OUTSIDE of any database transaction (no MySQL locks held during gRPC)
+        foreach ($claimedRecords as $record) {
             $summary['processed']++;
-            $result = $this->reconcileRecord($record);
+
+            try {
+                $this->reconcileRecord($record);
+            } catch (\Throwable $e) {
+                Log::error("[Reconciler] Unexpected error reconciling record {$record->id}: " . $e->getMessage());
+            } finally {
+                // Clear the worker lease lock
+                try {
+                    $record->update([
+                        'locked_until' => null,
+                        'locked_by'    => null,
+                    ]);
+                } catch (\Throwable $ignored) {
+                }
+            }
 
             if ($record->workflow_state === InventoryReconciliation::STATE_CONFIRMED) {
                 $summary['confirmed']++;
@@ -101,6 +137,10 @@ class InventoryReconciliationService
      */
     public function reconcileRecord(InventoryReconciliation $record): bool
     {
+        if ($record->workflow_state === InventoryReconciliation::STATE_PENDING_RESERVATION) {
+            return $this->reconcileReservation($record);
+        }
+
         if ($record->workflow_state === InventoryReconciliation::STATE_PENDING_CONFIRMATION) {
             return $this->reconcileConfirmation($record);
         }
@@ -110,6 +150,88 @@ class InventoryReconciliationService
         }
 
         return true;
+    }
+
+    /**
+     * Reconcile an ambiguous or abandoned pending reservation.
+     */
+    protected function reconcileReservation(InventoryReconciliation $record): bool
+    {
+        // Case 1: If reservation_id is already set
+        if (!empty($record->reservation_id)) {
+            if ($record->order_id) {
+                // MySQL order exists: transition to pending_confirmation and proceed
+                $record->update([
+                    'workflow_state' => InventoryReconciliation::STATE_PENDING_CONFIRMATION,
+                ]);
+                return $this->reconcileConfirmation($record);
+            }
+
+            // If order was never created and intent is older than 5 minutes, release reservation
+            if ($record->created_at && $record->created_at->diffInMinutes(now()) >= 5) {
+                Log::info("[Reconciler] Releasing abandoned reservation intent {$record->reservation_id} for order_ref {$record->order_ref}");
+                $record->update([
+                    'workflow_state' => InventoryReconciliation::STATE_PENDING_RELEASE,
+                ]);
+                return $this->compensateRelease($record);
+            }
+
+            return false;
+        }
+
+        // Case 2: reservation_id is null (ReserveStock response was lost or never succeeded)
+        // Check if items payload is available to retry reservation
+        if (empty($record->items_payload) || !is_array($record->items_payload)) {
+            $record->update([
+                'workflow_state' => InventoryReconciliation::STATE_FAILED,
+                'last_error'     => 'Cannot retry reservation: missing items payload.',
+                'next_retry_at'  => null,
+            ]);
+            return false;
+        }
+
+        try {
+            $grpcItems = array_map(function ($it) {
+                return [
+                    'product_id' => (int) ($it['product_id'] ?? 0),
+                    'quantity'   => (int) ($it['quantity'] ?? 0),
+                ];
+            }, $record->items_payload);
+
+            // Re-call ReserveStock with the exact same order_ref (idempotent in PostgreSQL)
+            $res = $this->inventoryClient->reserveStock($record->order_ref, $grpcItems, 300);
+
+            if ($res['success']) {
+                $record->update([
+                    'reservation_id' => $res['reservation_id'],
+                    'last_error'     => null,
+                ]);
+
+                if ($record->order_id) {
+                    $record->update([
+                        'workflow_state' => InventoryReconciliation::STATE_PENDING_CONFIRMATION,
+                    ]);
+                    return $this->reconcileConfirmation($record);
+                }
+
+                return true;
+            }
+
+            // Definite rejection (e.g. out of stock)
+            $record->update([
+                'workflow_state' => InventoryReconciliation::STATE_FAILED,
+                'last_error'     => $res['message'] ?? 'Stock reservation failed on retry.',
+                'next_retry_at'  => null,
+            ]);
+            return false;
+
+        } catch (InventoryServiceUnavailableException $e) {
+            $this->applyRetryBackoff($record, 'Reservation retry transport failure: ' . $e->getMessage());
+            return false;
+        } catch (\Throwable $e) {
+            $this->applyRetryBackoff($record, 'Reservation retry error: ' . $e->getMessage());
+            return false;
+        }
     }
 
     /**
@@ -124,14 +246,12 @@ class InventoryReconciliationService
             );
 
             if ($confirmResult['success']) {
-                // Succeeded or already confirmed idempotently in PostgreSQL
                 $record->update([
                     'workflow_state' => InventoryReconciliation::STATE_CONFIRMED,
                     'last_error'     => null,
                     'next_retry_at'  => null,
                 ]);
 
-                // Ensure MySQL order is active (0 = pending)
                 if ($record->order_id) {
                     $order = Order::find($record->order_id);
                     if ($order && $order->status === 'cancelled') {
@@ -144,11 +264,8 @@ class InventoryReconciliationService
                 return true;
             }
 
-            // Definite business rejection from Python inventory service
-            // (e.g. "Cannot confirm an expired reservation." or "Reservation not found.")
             Log::warning("[Reconciler] Confirmation rejected for {$record->reservation_id}: " . ($confirmResult['message'] ?? 'Unknown'));
 
-            // Cancel the MySQL order
             if ($record->order_id) {
                 $order = Order::find($record->order_id);
                 if ($order && $order->status !== 'cancelled') {
@@ -166,7 +283,6 @@ class InventoryReconciliationService
             return $this->compensateRelease($record);
 
         } catch (InventoryServiceUnavailableException $e) {
-            // Transport error: network timeout, service down
             $this->applyRetryBackoff($record, 'Confirmation transport failure: ' . $e->getMessage());
             return false;
         } catch (\Throwable $e) {
@@ -187,7 +303,6 @@ class InventoryReconciliationService
             );
 
             if ($releaseResult['success']) {
-                // Succeeded or already released idempotently
                 $record->update([
                     'workflow_state' => InventoryReconciliation::STATE_RELEASED,
                     'last_error'     => null,
@@ -200,8 +315,7 @@ class InventoryReconciliationService
 
             $msg = $releaseResult['message'] ?? 'Release failed';
 
-            // CRITICAL: Check if inventory rejected because reservation was confirmed
-            // "Cannot release a confirmed reservation."
+            // CRITICAL: A confirmed reservation must NEVER be released as compensation!
             if (str_contains(strtolower($msg), 'cannot release a confirmed reservation')) {
                 Log::warning("[Reconciler] Reservation {$record->reservation_id} is already confirmed in PostgreSQL. Reconciling to confirmed.");
                 $record->update([
@@ -210,7 +324,6 @@ class InventoryReconciliationService
                     'next_retry_at'  => null,
                 ]);
 
-                // Ensure MySQL order is active
                 if ($record->order_id) {
                     $order = Order::find($record->order_id);
                     if ($order && $order->status === 'cancelled') {
@@ -221,7 +334,6 @@ class InventoryReconciliationService
                 return true;
             }
 
-            // Normal release failure (e.g. transport timeout or lock wait)
             $this->applyRetryBackoff($record, 'Release failure: ' . $msg);
             return false;
 
@@ -248,7 +360,6 @@ class InventoryReconciliationService
             ]);
             Log::error("[Reconciler] Record {$record->id} (order_ref {$record->order_ref}) exceeded max retries ({$maxRetries}). State marked FAILED.");
         } else {
-            // Exponential backoff: 2s, 4s, 8s, 16s...
             $backoffSeconds = min(60, (int) pow(2, $newRetryCount));
             $record->update([
                 'retry_count'   => $newRetryCount,

@@ -222,6 +222,12 @@ class InventoryServiceServicer(inventory_pb2_grpc.InventoryServiceServicer):
                         (res_id, item.product_id, item.quantity)
                     )
                 conn.commit()
+
+                # Controlled Fault Injection: Simulate transport failure after PostgreSQL commit
+                if "FAULT_TIMEOUT_RESERVE" in order_ref:
+                    print(f"[FaultInjection] Simulating transport timeout after ReserveStock committed for {order_ref}")
+                    context.abort(grpc.StatusCode.UNAVAILABLE, "Fault Injection: network timeout after ReserveStock commit")
+
                 return inventory_pb2.ReserveStockResponse(
                     success=True,
                     reservation_id=res_id,
@@ -299,6 +305,12 @@ class InventoryServiceServicer(inventory_pb2_grpc.InventoryServiceServicer):
                     )
                 cur.execute("UPDATE reservations SET status = 'released' WHERE reservation_id = %s;", (actual_res_id,))
                 conn.commit()
+
+                # Controlled Fault Injection: Simulate transport failure after PostgreSQL commit
+                if actual_order_ref and "FAULT_TIMEOUT_RELEASE" in actual_order_ref:
+                    print(f"[FaultInjection] Simulating transport timeout after ReleaseStock committed for {actual_order_ref}")
+                    context.abort(grpc.StatusCode.UNAVAILABLE, "Fault Injection: network timeout after ReleaseStock commit")
+
                 return inventory_pb2.ReleaseStockResponse(success=True, message="Reserved stock released.")
         except Exception as ex:
             conn.rollback()
@@ -374,6 +386,12 @@ class InventoryServiceServicer(inventory_pb2_grpc.InventoryServiceServicer):
                 # Valid pending reservation -> transition to confirmed
                 cur.execute("UPDATE reservations SET status = 'confirmed' WHERE reservation_id = %s;", (actual_res_id,))
                 conn.commit()
+
+                # Controlled Fault Injection: Simulate transport failure after PostgreSQL commit
+                if actual_order_ref and "FAULT_TIMEOUT_CONFIRM" in actual_order_ref:
+                    print(f"[FaultInjection] Simulating transport timeout after ConfirmStock committed for {actual_order_ref}")
+                    context.abort(grpc.StatusCode.UNAVAILABLE, "Fault Injection: network timeout after ConfirmStock commit")
+
                 return inventory_pb2.ConfirmStockResponse(success=True, message="Reservation confirmed.")
         except Exception as ex:
             conn.rollback()

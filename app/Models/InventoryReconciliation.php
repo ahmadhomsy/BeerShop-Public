@@ -20,6 +20,7 @@ class InventoryReconciliation extends Model
     protected $table = 'inventory_reconciliations';
 
     protected $fillable = [
+        'user_id',
         'order_id',
         'order_ref',
         'idempotency_key',
@@ -29,6 +30,8 @@ class InventoryReconciliation extends Model
         'retry_count',
         'max_retries',
         'next_retry_at',
+        'locked_until',
+        'locked_by',
         'last_error',
         'items_payload',
     ];
@@ -36,13 +39,24 @@ class InventoryReconciliation extends Model
     protected $casts = [
         'items_payload' => 'array',
         'next_retry_at' => 'datetime',
+        'locked_until'  => 'datetime',
         'retry_count'   => 'integer',
         'max_retries'   => 'integer',
     ];
 
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'user_id');
+    }
+
     public function order(): BelongsTo
     {
         return $this->belongsTo(Order::class, 'order_id');
+    }
+
+    public function isPendingReservation(): bool
+    {
+        return $this->workflow_state === self::STATE_PENDING_RESERVATION;
     }
 
     public function isPendingConfirmation(): bool

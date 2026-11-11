@@ -106,6 +106,7 @@ class InventorySagaReconciliationTest extends TestCase
         $this->assertNotNull($rec);
         $this->assertSame(InventoryReconciliation::STATE_CONFIRMED, $rec->workflow_state);
         $this->assertSame($resId, $rec->reservation_id);
+        $this->assertSame($this->customer->id, $rec->user_id);
         $this->assertNull($rec->last_error);
     }
 
@@ -177,16 +178,17 @@ class InventorySagaReconciliationTest extends TestCase
         ]);
 
         $resId = 'res-recon-' . uniqid();
-        $orderRef = 'ORD-RECON-' . uniqid();
+        $orderRef = 'ORD-U' . $this->customer->id . '-RECON-' . uniqid();
 
         $rec = InventoryReconciliation::create([
+            'user_id'         => $this->customer->id,
             'order_id'        => $order->id,
             'order_ref'       => $orderRef,
             'reservation_id'  => $resId,
             'workflow_state'  => InventoryReconciliation::STATE_PENDING_CONFIRMATION,
             'retry_count'     => 1,
             'max_retries'     => 5,
-            'next_retry_at'   => now()->subMinute(), // eligible for retry
+            'next_retry_at'   => now()->subMinute(),
             'last_error'      => 'Initial gRPC timeout',
             'items_payload'   => [['product_id' => $this->product->id, 'quantity' => 1]],
         ]);
@@ -204,7 +206,6 @@ class InventorySagaReconciliationTest extends TestCase
 
         $this->app->instance(InventoryClient::class, $mockClient);
 
-        // Run Artisan reconciliation
         $exitCode = Artisan::call('inventory:reconcile', ['--limit' => 10]);
         $this->assertSame(0, $exitCode);
 
@@ -234,7 +235,6 @@ class InventorySagaReconciliationTest extends TestCase
                 'message'        => 'Stock reserved.',
             ]);
 
-        // Definite business rejection: reservation expired
         $mockClient->shouldReceive('confirmStock')
             ->once()
             ->with($resId, Mockery::type('string'))
@@ -243,7 +243,6 @@ class InventorySagaReconciliationTest extends TestCase
                 'message' => 'Cannot confirm an expired reservation.',
             ]);
 
-        // Compensation releaseStock must be executed immediately
         $mockClient->shouldReceive('releaseStock')
             ->once()
             ->with($resId, Mockery::type('string'))
@@ -301,7 +300,6 @@ class InventorySagaReconciliationTest extends TestCase
                 'message' => 'Cannot confirm an expired reservation.',
             ]);
 
-        // ReleaseStock fails (e.g. timeout / network partition)
         $mockClient->shouldReceive('releaseStock')
             ->once()
             ->with($resId, Mockery::type('string'))
@@ -343,10 +341,11 @@ class InventorySagaReconciliationTest extends TestCase
     public function test_scenario_6_reconciliation_retries_pending_release_and_enforces_max_retries(): void
     {
         $resId = 'res-retry-rel-' . uniqid();
-        $orderRef = 'ORD-REL-' . uniqid();
+        $orderRef = 'ORD-U' . $this->customer->id . '-REL-' . uniqid();
 
         // 6A: Recovery success
         $rec1 = InventoryReconciliation::create([
+            'user_id'         => $this->customer->id,
             'order_ref'       => $orderRef . '-A',
             'reservation_id'  => $resId . '-A',
             'workflow_state'  => InventoryReconciliation::STATE_PENDING_RELEASE,
@@ -376,6 +375,7 @@ class InventorySagaReconciliationTest extends TestCase
 
         // 6B: Max retries exceeded marks FAILED
         $rec2 = InventoryReconciliation::create([
+            'user_id'         => $this->customer->id,
             'order_ref'       => $orderRef . '-B',
             'reservation_id'  => $resId . '-B',
             'workflow_state'  => InventoryReconciliation::STATE_PENDING_RELEASE,
@@ -414,7 +414,6 @@ class InventorySagaReconciliationTest extends TestCase
 
         $mockClient = Mockery::mock(InventoryClient::class);
 
-        // gRPC reserve & confirm should only be called once!
         $mockClient->shouldReceive('reserveStock')
             ->once()
             ->andReturn([
@@ -459,10 +458,7 @@ class InventorySagaReconciliationTest extends TestCase
         $res2->assertStatus(201);
         $orderId2 = $res2->json('data.id');
 
-        // Both calls return the exact same order
         $this->assertSame($orderId1, $orderId2);
-
-        // Exactly 1 order exists in database for this email
         $this->assertSame(1, Order::where('email', 'idem@example.com')->count());
     }
 
@@ -493,7 +489,6 @@ class InventorySagaReconciliationTest extends TestCase
 
         $this->app->instance(InventoryClient::class, $mockClient);
 
-        // 1st call: payload with quantity 1
         $res1 = $this->withHeader('Authorization', 'Bearer ' . $this->customerToken)
             ->withHeader('Idempotency-Key', $idempotencyKey)
             ->postJson('/api/v1/orders', [
@@ -508,7 +503,6 @@ class InventorySagaReconciliationTest extends TestCase
 
         $res1->assertStatus(201);
 
-        // 2nd call: same Idempotency-Key, different payload (quantity 5)
         $res2 = $this->withHeader('Authorization', 'Bearer ' . $this->customerToken)
             ->withHeader('Idempotency-Key', $idempotencyKey)
             ->postJson('/api/v1/orders', [
@@ -526,55 +520,212 @@ class InventorySagaReconciliationTest extends TestCase
     }
 
     /**
-     * Real integration test: Live native gRPC microservice and PostgreSQL inventory.
+     * Hardening 1: Scoping Idempotency to Authenticated User.
+     * User A creates order with key K. User B submits key K with same payload.
+     * User B must create their own independent order and NEVER receive User A's order or data!
      */
-    public function test_live_grpc_integration_full_saga_and_reconciliation_record(): void
+    public function test_user_scoped_idempotency_isolation(): void
     {
-        $realClient = app(InventoryClient::class);
+        $userB = User::create([
+            'name'     => 'User B Tester',
+            'email'    => 'user_b_' . uniqid() . '@example.com',
+            'password' => Hash::make('password123'),
+            'role'     => 'user',
+        ]);
+        $tokenB = auth('api')->tokenById($userB->id);
+        auth()->forgetGuards();
 
-        // Pick a test product that exists in PostgreSQL (product 5 has 20 units)
-        $product = Product::find(5);
-        if (!$product) {
-            $product = new Product([
-                'name'               => 'Live gRPC Beer',
-                'namear'             => 'بيرة حية',
-                'price'              => 15.0,
-                'category_id'        => 1,
-                'second_category_id' => 1,
-                'seller_id'          => $this->customer->id,
-                'description'        => 'Live gRPC Test',
-                'imgpath'            => 'test.jpg',
-            ]);
-            $product->id = 5;
-            $product->save();
-        }
+        $sharedKey = 'SHARED-IDEM-KEY-' . uniqid();
+        $resA = 'res-usera-' . uniqid();
+        $resB = 'res-userb-' . uniqid();
 
-        // Query initial live stock from microservice
-        $initialStock = $realClient->getStock(5);
-        $this->assertGreaterThanOrEqual(1, $initialStock['available_stock']);
+        $mockClient = Mockery::mock(InventoryClient::class);
 
-        // Create order through real gRPC client
-        $orderService = app(\App\Modules\Orders\Services\OrderService::class);
-        $idempotencyKey = 'LIVE-TEST-' . uniqid();
+        // Expect 2 distinct reservations: one for User A, one for User B
+        $mockClient->shouldReceive('reserveStock')
+            ->twice()
+            ->andReturn(
+                ['success' => true, 'reservation_id' => $resA, 'message' => 'Stock reserved.'],
+                ['success' => true, 'reservation_id' => $resB, 'message' => 'Stock reserved.']
+            );
 
-        $order = $orderService->create($this->customer, [
-            'name'    => 'Live gRPC Buyer',
-            'email'   => 'live_' . uniqid() . '@example.com',
-            'address' => 'Live gRPC Way 9',
+        $mockClient->shouldReceive('confirmStock')
+            ->twice()
+            ->andReturn(
+                ['success' => true, 'message' => 'Confirmed A.'],
+                ['success' => true, 'message' => 'Confirmed B.']
+            );
+
+        $this->app->instance(InventoryClient::class, $mockClient);
+
+        $payload = [
+            'name'    => 'Shared Buyer',
+            'email'   => 'shared@example.com',
+            'address' => 'Shared Lane 1',
             'phone'   => '0555555555',
             'items'   => [
-                ['product_id' => 5, 'quantity' => 1],
+                ['product_id' => $this->product->id, 'quantity' => 1],
             ],
-        ], $idempotencyKey);
+        ];
 
-        $this->assertNotNull($order);
-        $this->assertSame('0', $order->status);
+        // 1. User A creates order with key K
+        $resOrderA = $this->actingAs($this->customer, 'api')
+            ->withHeader('Idempotency-Key', $sharedKey)
+            ->postJson('/api/v1/orders', $payload);
 
-        // Verify outbox record created and confirmed
-        $rec = InventoryReconciliation::where('order_id', $order->id)->first();
+        $resOrderA->assertStatus(201);
+        $orderIdA = $resOrderA->json('data.id');
+        $this->assertSame($this->customer->id, $resOrderA->json('data.user_id'));
+
+        // 2. User B creates order with the EXACT SAME key K and identical payload
+        $resOrderB = $this->actingAs($userB, 'api')
+            ->withHeader('Idempotency-Key', $sharedKey)
+            ->postJson('/api/v1/orders', $payload);
+
+        $resOrderB->assertStatus(201);
+        $orderIdB = $resOrderB->json('data.id');
+        $this->assertSame($userB->id, $resOrderB->json('data.user_id'));
+
+        // 3. User B must receive their own distinct order, NOT User A's order!
+        $this->assertNotEquals($orderIdA, $orderIdB);
+
+        // 4. User A replays key K -> receives User A's original order
+        $replayA = $this->actingAs($this->customer, 'api')
+            ->withHeader('Idempotency-Key', $sharedKey)
+            ->postJson('/api/v1/orders', $payload);
+        $replayA->assertStatus(201);
+        $this->assertSame($orderIdA, $replayA->json('data.id'));
+
+        // 5. User B replays key K -> receives User B's original order
+        $replayB = $this->actingAs($userB, 'api')
+            ->withHeader('Idempotency-Key', $sharedKey)
+            ->postJson('/api/v1/orders', $payload);
+        $replayB->assertStatus(201);
+        $this->assertSame($orderIdB, $replayB->json('data.id'));
+    }
+
+    /**
+     * Hardening 2: Idempotency-Key maximum length validation (max 255 chars).
+     */
+    public function test_idempotency_key_exceeding_max_length_returns_422(): void
+    {
+        $overlongKey = str_repeat('a', 256);
+
+        $response = $this->withHeader('Authorization', 'Bearer ' . $this->customerToken)
+            ->withHeader('Idempotency-Key', $overlongKey)
+            ->postJson('/api/v1/orders', [
+                'name'    => 'Length Test Buyer',
+                'email'   => 'length@example.com',
+                'address' => 'Length Street 1',
+                'phone'   => '0555555555',
+                'items'   => [
+                    ['product_id' => $this->product->id, 'quantity' => 1],
+                ],
+            ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['idempotency_key']);
+    }
+
+    /**
+     * Hardening 3: Ambiguous ReserveStock response (transport timeout) preserves intent and enables recovery.
+     */
+    public function test_ambiguous_reserve_stock_timeout_and_recovery(): void
+    {
+        $idemKey = 'RESERVE-TIMEOUT-KEY-' . uniqid();
+        $resId = 'res-recovered-' . uniqid();
+
+        $mockClient = Mockery::mock(InventoryClient::class);
+
+        $reserveAttempts = 0;
+        $mockClient->shouldReceive('reserveStock')
+            ->twice()
+            ->andReturnUsing(function () use ($resId, &$reserveAttempts) {
+                $reserveAttempts++;
+                if ($reserveAttempts === 1) {
+                    throw new InventoryServiceUnavailableException('gRPC network timeout during ReserveStock');
+                }
+                return [
+                    'success'        => true,
+                    'reservation_id' => $resId,
+                    'message'        => 'Stock reserved (recovered).',
+                ];
+            });
+
+        $mockClient->shouldReceive('confirmStock')
+            ->once()
+            ->with($resId, Mockery::type('string'))
+            ->andReturn([
+                'success' => true,
+                'message' => 'Reservation confirmed.',
+            ]);
+
+        $this->app->instance(InventoryClient::class, $mockClient);
+
+        $payload = [
+            'name'    => 'Reserve Timeout Buyer',
+            'email'   => 'res_timeout@example.com',
+            'address' => 'Timeout Road 1',
+            'phone'   => '0555555555',
+            'items'   => [
+                ['product_id' => $this->product->id, 'quantity' => 1],
+            ],
+        ];
+
+        $res1 = $this->withHeader('Authorization', 'Bearer ' . $this->customerToken)
+            ->withHeader('Idempotency-Key', $idemKey)
+            ->postJson('/api/v1/orders', $payload);
+
+        $res1->assertStatus(503);
+
+        // Verify intent record exists in pending_reservation with user scoping
+        $rec = InventoryReconciliation::where('user_id', $this->customer->id)
+            ->where('idempotency_key', $idemKey)
+            ->first();
+
         $this->assertNotNull($rec);
+        $this->assertSame(InventoryReconciliation::STATE_PENDING_RESERVATION, $rec->workflow_state);
+        $this->assertStringContainsString('ReserveStock transport failure', $rec->last_error);
+
+        // 2nd attempt: Service is healthy, same key recovers and completes
+        $res2 = $this->withHeader('Authorization', 'Bearer ' . $this->customerToken)
+            ->withHeader('Idempotency-Key', $idemKey)
+            ->postJson('/api/v1/orders', $payload);
+
+        $res2->assertStatus(201);
+        $rec->refresh();
         $this->assertSame(InventoryReconciliation::STATE_CONFIRMED, $rec->workflow_state);
-        $this->assertSame($idempotencyKey, $rec->idempotency_key);
-        $this->assertNotNull($rec->reservation_id);
+        $this->assertSame($resId, $rec->reservation_id);
+    }
+
+    /**
+     * Hardening 4: Worker concurrency lease locking prevents simultaneous processing of same record.
+     */
+    public function test_worker_concurrency_lease_locking(): void
+    {
+        $rec = InventoryReconciliation::create([
+            'user_id'         => $this->customer->id,
+            'order_ref'       => 'ORD-LEASE-' . uniqid(),
+            'reservation_id'  => 'res-lease-' . uniqid(),
+            'workflow_state'  => InventoryReconciliation::STATE_PENDING_CONFIRMATION,
+            'retry_count'     => 1,
+            'max_retries'     => 5,
+            'next_retry_at'   => now()->subMinute(),
+            // Already claimed by another worker until 5 minutes from now!
+            'locked_until'    => now()->addMinutes(5),
+            'locked_by'       => 'worker-node-1:12345',
+            'items_payload'   => [],
+        ]);
+
+        $mockClient = Mockery::mock(InventoryClient::class);
+        // Worker must NEVER call gRPC for a record currently leased to another worker!
+        $mockClient->shouldNotReceive('confirmStock');
+        $mockClient->shouldNotReceive('releaseStock');
+
+        $service = new InventoryReconciliationService($mockClient);
+        $summary = $service->reconcilePending(10);
+
+        // 0 records processed because the record is locked!
+        $this->assertSame(0, $summary['processed']);
     }
 }

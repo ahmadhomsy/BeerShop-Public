@@ -114,6 +114,8 @@ services:
       DB_USER: ${INVENTORY_DB_USER:-inventory_user}
       DB_PASSWORD: ${INVENTORY_DB_PASSWORD:-inventory_password}
       GRPC_PORT: 50051
+    volumes:
+      - ./inventory_service:/app
     ports:
       - "127.0.0.1:50051:50051"
     networks:
