@@ -56,12 +56,13 @@ class InventoryReconciliationService
      */
     public function reconcilePending(int $limit = 50): array
     {
-        $workerId = gethostname() . ':' . getmypid() . ':' . Str::random(8);
+        $workerId = gethostname() . ':' . getmypid() . ':' . Str::random(12);
         $now = now();
+        $driver = DB::connection()->getDriverName();
 
         // 1. Atomically claim a batch of eligible records in a fast database transaction
-        $claimedRecords = DB::transaction(function () use ($limit, $workerId, $now) {
-            $candidates = InventoryReconciliation::whereIn('workflow_state', [
+        $claimedRecords = DB::transaction(function () use ($limit, $workerId, $now, $driver) {
+            $query = InventoryReconciliation::whereIn('workflow_state', [
                     InventoryReconciliation::STATE_PENDING_RESERVATION,
                     InventoryReconciliation::STATE_PENDING_CONFIRMATION,
                     InventoryReconciliation::STATE_PENDING_RELEASE,
@@ -74,21 +75,38 @@ class InventoryReconciliationService
                     $query->whereNull('locked_until')
                           ->orWhere('locked_until', '<=', $now);
                 })
-                ->where('retry_count', '<', 10)
+                ->whereColumn('retry_count', '<', 'max_retries')
                 ->orderBy('next_retry_at', 'asc')
                 ->orderBy('id', 'asc')
-                ->limit($limit)
-                ->get();
+                ->limit($limit);
+
+            // Use non-blocking row locks where supported (MySQL 8.0 & PostgreSQL)
+            if ($driver === 'mysql' || $driver === 'pgsql') {
+                $candidates = $query->lock('FOR UPDATE SKIP LOCKED')->get();
+            } else {
+                $candidates = $query->get();
+            }
 
             $ids = $candidates->pluck('id')->all();
             if (!empty($ids)) {
-                InventoryReconciliation::whereIn('id', $ids)->update([
-                    'locked_until' => $now->copy()->addMinutes(2),
-                    'locked_by'    => $workerId,
-                ]);
+                // Conditional atomic compare-and-set: ensure lease is still null or expired
+                InventoryReconciliation::whereIn('id', $ids)
+                    ->where(function ($query) use ($now) {
+                        $query->whereNull('locked_until')
+                              ->orWhere('locked_until', '<=', $now);
+                    })
+                    ->update([
+                        'locked_until' => $now->copy()->addMinutes(2),
+                        'locked_by'    => $workerId,
+                    ]);
+
+                // Return ONLY records that were successfully leased to this workerId
+                return InventoryReconciliation::whereIn('id', $ids)
+                    ->where('locked_by', $workerId)
+                    ->get();
             }
 
-            return $candidates;
+            return collect();
         });
 
         $summary = [
@@ -108,12 +126,14 @@ class InventoryReconciliationService
             } catch (\Throwable $e) {
                 Log::error("[Reconciler] Unexpected error reconciling record {$record->id}: " . $e->getMessage());
             } finally {
-                // Clear the worker lease lock
+                // Clear the worker lease lock ONLY if this worker still owns it
                 try {
-                    $record->update([
-                        'locked_until' => null,
-                        'locked_by'    => null,
-                    ]);
+                    InventoryReconciliation::where('id', $record->id)
+                        ->where('locked_by', $workerId)
+                        ->update([
+                            'locked_until' => null,
+                            'locked_by'    => null,
+                        ]);
                 } catch (\Throwable $ignored) {
                 }
             }

@@ -19,6 +19,8 @@ DB_NAME = os.getenv("DB_NAME", "inventory_db")
 DB_USER = os.getenv("DB_USER", "inventory_user")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "inventory_password")
 GRPC_PORT = os.getenv("GRPC_PORT", "50051")
+ENABLE_FAULT_INJECTION = os.getenv("ENABLE_FAULT_INJECTION", "false").lower() in ("true", "1")
+
 
 
 class DatabaseManager:
@@ -224,7 +226,7 @@ class InventoryServiceServicer(inventory_pb2_grpc.InventoryServiceServicer):
                 conn.commit()
 
                 # Controlled Fault Injection: Simulate transport failure after PostgreSQL commit
-                if "FAULT_TIMEOUT_RESERVE" in order_ref:
+                if ENABLE_FAULT_INJECTION and "FAULT_TIMEOUT_RESERVE" in order_ref:
                     print(f"[FaultInjection] Simulating transport timeout after ReserveStock committed for {order_ref}")
                     context.abort(grpc.StatusCode.UNAVAILABLE, "Fault Injection: network timeout after ReserveStock commit")
 
@@ -307,7 +309,7 @@ class InventoryServiceServicer(inventory_pb2_grpc.InventoryServiceServicer):
                 conn.commit()
 
                 # Controlled Fault Injection: Simulate transport failure after PostgreSQL commit
-                if actual_order_ref and "FAULT_TIMEOUT_RELEASE" in actual_order_ref:
+                if ENABLE_FAULT_INJECTION and actual_order_ref and "FAULT_TIMEOUT_RELEASE" in actual_order_ref:
                     print(f"[FaultInjection] Simulating transport timeout after ReleaseStock committed for {actual_order_ref}")
                     context.abort(grpc.StatusCode.UNAVAILABLE, "Fault Injection: network timeout after ReleaseStock commit")
 
@@ -388,7 +390,7 @@ class InventoryServiceServicer(inventory_pb2_grpc.InventoryServiceServicer):
                 conn.commit()
 
                 # Controlled Fault Injection: Simulate transport failure after PostgreSQL commit
-                if actual_order_ref and "FAULT_TIMEOUT_CONFIRM" in actual_order_ref:
+                if ENABLE_FAULT_INJECTION and actual_order_ref and "FAULT_TIMEOUT_CONFIRM" in actual_order_ref:
                     print(f"[FaultInjection] Simulating transport timeout after ConfirmStock committed for {actual_order_ref}")
                     context.abort(grpc.StatusCode.UNAVAILABLE, "Fault Injection: network timeout after ConfirmStock commit")
 

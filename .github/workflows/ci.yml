@@ -37,11 +37,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup PHP 8.2 with native gRPC extension
+      - name: Setup PHP 8.2 with native gRPC and database extensions
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.2'
-          extensions: mbstring, xml, ctype, iconv, intl, pdo, pdo_mysql, grpc
+          extensions: mbstring, xml, ctype, iconv, intl, pdo, pdo_mysql, pdo_pgsql, sqlite3, pdo_sqlite, grpc
           coverage: none
 
       - name: Setup Python 3.12
@@ -55,6 +55,17 @@ jobs:
           pip install -r inventory_service/requirements.txt
           pip install requests psycopg2-binary grpcio-tools
 
+      - name: Wait for PostgreSQL readiness
+        run: |
+          for i in {1..30}; do
+            if PGPASSWORD=inventory_password pg_isready -h 127.0.0.1 -p 5432 -U inventory_user -d inventory_db; then
+              echo "PostgreSQL is ready"
+              break
+            fi
+            echo "Waiting for PostgreSQL ($i)..."
+            sleep 1
+          done
+
       - name: Start Python gRPC Inventory Microservice
         env:
           DB_HOST: 127.0.0.1
@@ -63,19 +74,48 @@ jobs:
           DB_USER: inventory_user
           DB_PASSWORD: inventory_password
           GRPC_PORT: 50051
+          ENABLE_FAULT_INJECTION: "true"
         run: |
           python inventory_service/server.py &
-          sleep 3
 
-      - name: Setup Application Configuration
+      - name: Wait for Python gRPC Service readiness
+        run: |
+          python -c '
+          import socket, time
+          for i in range(30):
+              try:
+                  s = socket.create_connection(("127.0.0.1", 50051), timeout=1)
+                  s.close()
+                  print("gRPC service is ready")
+                  break
+              except Exception:
+                  time.sleep(1)
+          else:
+              raise SystemExit("gRPC service failed to start on port 50051")
+          '
+
+      - name: Setup Application Configuration and SQLite Database
         run: |
           cp .env.example .env
           composer install -q --no-ansi --no-interaction --no-scripts --no-progress --prefer-dist
           php artisan key:generate
           php artisan jwt:secret --force
+          mkdir -p database
+          touch database/testing.sqlite
+          php artisan migrate --database=sqlite --force
 
       - name: Run Fast SQLite Unit & Feature Test Suite
         run: php artisan test
+
+      - name: Run MySQL Migrations
+        env:
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: aboodm4_beershop
+          DB_USERNAME: beershop_user
+          DB_PASSWORD: beershop_password
+        run: php artisan migrate --database=mysql --force
 
       - name: Run Real Distributed Integration Test Suite (MySQL & PostgreSQL gRPC)
         env:
@@ -87,6 +127,12 @@ jobs:
           DB_PASSWORD: beershop_password
           INVENTORY_GRPC_HOST: 127.0.0.1
           INVENTORY_GRPC_PORT: 50051
+          DB_INVENTORY_HOST: 127.0.0.1
+          DB_INVENTORY_PORT: 5432
+          DB_INVENTORY_DATABASE: inventory_db
+          DB_INVENTORY_USERNAME: inventory_user
+          DB_INVENTORY_PASSWORD: inventory_password
+          ENABLE_FAULT_INJECTION: "true"
         run: vendor/bin/phpunit --configuration=phpunit.integration.xml
 
       - name: Run Concurrency Race Condition Proof

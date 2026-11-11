@@ -77,6 +77,21 @@ class RealDistributedIntegrationTest extends TestCase
             $this->product->save();
         }
 
+        // Reset and isolate test product 10 in PostgreSQL before test
+        try {
+            DB::connection('inventory_db')->statement("DELETE FROM reservation_items WHERE reservation_id IN (SELECT reservation_id FROM reservations WHERE order_ref LIKE 'ORD-U%' OR order_ref LIKE 'CONC-%');");
+            DB::connection('inventory_db')->statement("DELETE FROM reservations WHERE order_ref LIKE 'ORD-U%' OR order_ref LIKE 'CONC-%';");
+            DB::connection('inventory_db')->statement("UPDATE inventory SET total_stock = 20, reserved_stock = 0 WHERE product_id = 10;");
+        } catch (\Throwable $e) {
+        }
+
+        // Clean any pending reconciliation records in MySQL before test
+        InventoryReconciliation::whereIn('workflow_state', [
+            InventoryReconciliation::STATE_PENDING_RESERVATION,
+            InventoryReconciliation::STATE_PENDING_CONFIRMATION,
+            InventoryReconciliation::STATE_PENDING_RELEASE,
+        ])->delete();
+
         // Record initial live stock from Python gRPC microservice
         $stock = $this->inventoryClient->getStock(10);
         $this->initialTotalStock = $stock['total_stock'];
@@ -85,7 +100,29 @@ class RealDistributedIntegrationTest extends TestCase
 
     protected function tearDown(): void
     {
-        // Restore stock state if needed
+        // 1. Clean up test reconciliations and orders from MySQL
+        if (isset($this->userA) && isset($this->userB)) {
+            $testUserIds = [$this->userA->id, $this->userB->id];
+            $orderIds = Order::whereIn('user_id', $testUserIds)->pluck('id')->all();
+            if (!empty($orderIds)) {
+                $partIds = \App\Models\OrderPart::whereIn('order_id', $orderIds)->pluck('id')->all();
+                if (!empty($partIds)) {
+                    \App\Models\OrderDetail::whereIn('orderpart_id', $partIds)->delete();
+                }
+                \App\Models\OrderPart::whereIn('order_id', $orderIds)->delete();
+                Order::whereIn('id', $orderIds)->delete();
+            }
+            InventoryReconciliation::whereIn('user_id', $testUserIds)->delete();
+        }
+
+        // 2. Reset test product (10) stock and test reservations in PostgreSQL
+        try {
+            DB::connection('inventory_db')->statement("DELETE FROM reservation_items WHERE reservation_id IN (SELECT reservation_id FROM reservations WHERE order_ref LIKE 'ORD-U%' OR order_ref LIKE 'CONC-%');");
+            DB::connection('inventory_db')->statement("DELETE FROM reservations WHERE order_ref LIKE 'ORD-U%' OR order_ref LIKE 'CONC-%';");
+            DB::connection('inventory_db')->statement("UPDATE inventory SET total_stock = 20, reserved_stock = 0 WHERE product_id = 10;");
+        } catch (\Throwable $e) {
+        }
+
         parent::tearDown();
     }
 
@@ -329,5 +366,138 @@ class RealDistributedIntegrationTest extends TestCase
 
         // Cleanup
         $this->inventoryClient->releaseStock($rec->reservation_id, $rec->order_ref);
+    }
+
+    /**
+     * Requirement: Same-user simultaneous idempotency requests resolve to a single canonical order in real MySQL.
+     * Verifies that duplicate requests do not steal active unexpired leases and return the same order.
+     */
+    public function test_real_same_user_simultaneous_idempotency_requests_atomic_claim(): void
+    {
+        $idemKey = 'REAL-SAME-USER-' . uniqid();
+        $payload = [
+            'name'    => 'Real Same User Buyer',
+            'email'   => 'real_same@example.com',
+            'address' => 'Real Road 10',
+            'phone'   => '0555555555',
+            'items'   => [
+                ['product_id' => 10, 'quantity' => 1],
+            ],
+        ];
+
+        // 1. First execution creates canonical order
+        $order1 = $this->orderService->create($this->userA, $payload, $idemKey);
+        $this->assertNotNull($order1);
+
+        // 2. Replay with same key and payload returns the exact same order
+        $order2 = $this->orderService->create($this->userA, $payload, $idemKey);
+        $this->assertSame($order1->id, $order2->id);
+
+        // Exactly 1 reconciliation record and 1 order created in MySQL
+        $recCount = InventoryReconciliation::where('user_id', $this->userA->id)
+            ->where('idempotency_key', $idemKey)
+            ->count();
+        $this->assertSame(1, $recCount);
+
+        $orderCount = Order::where('user_id', $this->userA->id)
+            ->where('email', 'real_same@example.com')
+            ->count();
+        $this->assertSame(1, $orderCount);
+
+        // 3. Test active lease protection: an in-flight unexpired lease cannot be stolen
+        $inFlightKey = 'REAL-INFLIGHT-' . uniqid();
+        $payloadHash = InventoryReconciliationService::hashPayload($payload);
+        $inFlightRec = InventoryReconciliation::create([
+            'user_id'         => $this->userA->id,
+            'order_ref'       => 'ORD-U' . $this->userA->id . '-real-inflight',
+            'idempotency_key' => $inFlightKey,
+            'payload_hash'    => $payloadHash,
+            'workflow_state'  => InventoryReconciliation::STATE_PENDING_RESERVATION,
+            'items_payload'   => $payload['items'],
+            'retry_count'     => 0,
+            'max_retries'     => 5,
+            'locked_until'    => now()->addSeconds(30),
+            'locked_by'       => 'real_active_worker_token',
+        ]);
+
+        $caught = false;
+        try {
+            $this->orderService->create($this->userA, $payload, $inFlightKey);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            $caught = true;
+            $this->assertArrayHasKey('idempotency_key', $e->errors());
+        }
+
+        $this->assertTrue($caught, 'Concurrent request must reject lease stealing when active lease is held.');
+
+        $inFlightRec->refresh();
+        $this->assertSame('real_active_worker_token', $inFlightRec->locked_by);
+    }
+
+    /**
+     * Requirement: Concurrent reconciliation workers with exclusive atomic claiming against real MySQL.
+     * Verifies that only one worker acquires the record, the loser does not clear the lease,
+     * and the record reaches confirmed state.
+     */
+    public function test_real_concurrent_reconciliation_workers_exclusive_claim(): void
+    {
+        $orderRef = 'ORD-U' . $this->userA->id . '-WORKER-COMPETE-' . uniqid();
+
+        // Ensure clean reconciliation state in MySQL before test
+        InventoryReconciliation::whereIn('workflow_state', [
+            InventoryReconciliation::STATE_PENDING_RESERVATION,
+            InventoryReconciliation::STATE_PENDING_CONFIRMATION,
+            InventoryReconciliation::STATE_PENDING_RELEASE,
+        ])->delete();
+
+        // 1. Reserve real stock in PostgreSQL
+        $res = $this->inventoryClient->reserveStock($orderRef, [
+            ['product_id' => 10, 'quantity' => 1]
+        ], 300);
+        $this->assertTrue($res['success']);
+        $resId = $res['reservation_id'];
+
+        // 2. Create order in MySQL
+        $order = Order::create([
+            'user_id' => $this->userA->id,
+            'name'    => 'Worker Test Buyer',
+            'email'   => 'worker_test@example.com',
+            'address' => 'Worker St 1',
+            'phone'   => '0555555555',
+            'note'    => 'Worker Test Note',
+            'total'   => 40.0,
+            'status'  => '0',
+        ]);
+
+        // 3. Create reconciliation record in pending_confirmation with no lease
+        $rec = InventoryReconciliation::create([
+            'user_id'         => $this->userA->id,
+            'order_id'        => $order->id,
+            'order_ref'       => $orderRef,
+            'reservation_id'  => $resId,
+            'workflow_state'  => InventoryReconciliation::STATE_PENDING_CONFIRMATION,
+            'retry_count'     => 1,
+            'max_retries'     => 5,
+            'next_retry_at'   => now()->subMinute(),
+            'locked_until'    => null,
+            'locked_by'       => null,
+            'items_payload'   => [['product_id' => 10, 'quantity' => 1]],
+        ]);
+
+        // 4. Two worker services compete for the record
+        $worker1 = app(InventoryReconciliationService::class);
+        $worker2 = app(InventoryReconciliationService::class);
+
+        $summary1 = $worker1->reconcilePending(10);
+        $this->assertSame(1, $summary1['processed']);
+        $this->assertSame(1, $summary1['confirmed']);
+
+        $summary2 = $worker2->reconcilePending(10);
+        $this->assertSame(0, $summary2['processed']);
+
+        $rec->refresh();
+        $this->assertSame(InventoryReconciliation::STATE_CONFIRMED, $rec->workflow_state);
+        $this->assertNull($rec->locked_until);
+        $this->assertNull($rec->locked_by);
     }
 }

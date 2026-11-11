@@ -31,4 +31,10 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    'inventory' => [
+        'grpc_host'              => env('INVENTORY_GRPC_HOST', '127.0.0.1'),
+        'grpc_port'              => env('INVENTORY_GRPC_PORT', 50051),
+        'enable_fault_injection' => env('ENABLE_FAULT_INJECTION', false),
+    ],
+
 ];

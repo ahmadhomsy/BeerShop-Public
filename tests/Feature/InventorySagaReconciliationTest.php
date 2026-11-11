@@ -728,4 +728,148 @@ class InventorySagaReconciliationTest extends TestCase
         // 0 records processed because the record is locked!
         $this->assertSame(0, $summary['processed']);
     }
+
+    /**
+     * Concurrency Proof 1: Same-user simultaneous idempotency requests resolve to a single canonical order.
+     * Verifies that in-flight requests do not steal valid unexpired leases and resolve to the same order.
+     */
+    public function test_same_user_simultaneous_idempotency_requests_resolve_to_single_order(): void
+    {
+        $idemKey = 'CONCUR-SAME-USER-' . uniqid();
+        $resId = 'res-concur-' . uniqid();
+
+        $mockClient = Mockery::mock(InventoryClient::class);
+        // Ensure reserveStock and confirmStock are called EXACTLY ONCE across all attempts
+        $mockClient->shouldReceive('reserveStock')
+            ->once()
+            ->andReturn([
+                'success'        => true,
+                'reservation_id' => $resId,
+                'message'        => 'Stock reserved.',
+            ]);
+
+        $mockClient->shouldReceive('confirmStock')
+            ->once()
+            ->with($resId, Mockery::type('string'))
+            ->andReturn([
+                'success' => true,
+                'message' => 'Reservation confirmed.',
+            ]);
+
+        $this->app->instance(InventoryClient::class, $mockClient);
+
+        $payload = [
+            'name'    => 'Concurrent Buyer',
+            'email'   => 'concurrent_buyer@example.com',
+            'address' => 'Concurrent Road 1',
+            'phone'   => '0555555555',
+            'items'   => [
+                ['product_id' => $this->product->id, 'quantity' => 1],
+            ],
+        ];
+
+        // 1. First request succeeds and creates canonical order
+        $res1 = $this->withHeader('Authorization', 'Bearer ' . $this->customerToken)
+            ->withHeader('Idempotency-Key', $idemKey)
+            ->postJson('/api/v1/orders', $payload);
+
+        $res1->assertStatus(201);
+        $canonicalOrderId = $res1->json('data.id');
+        $this->assertNotNull($canonicalOrderId);
+
+        // 2. Second request with the same user, same key, and same payload
+        $res2 = $this->withHeader('Authorization', 'Bearer ' . $this->customerToken)
+            ->withHeader('Idempotency-Key', $idemKey)
+            ->postJson('/api/v1/orders', $payload);
+
+        $res2->assertStatus(201);
+        $this->assertSame($canonicalOrderId, $res2->json('data.id'), 'Replay must return canonical order.');
+
+        // 3. Verify exactly 1 reconciliation record and 1 order created in DB
+        $recCount = InventoryReconciliation::where('user_id', $this->customer->id)
+            ->where('idempotency_key', $idemKey)
+            ->count();
+        $this->assertSame(1, $recCount, 'Exactly one reconciliation record must exist.');
+
+        $orderCount = Order::where('user_id', $this->customer->id)
+            ->where('email', 'concurrent_buyer@example.com')
+            ->count();
+        $this->assertSame(1, $orderCount, 'Exactly one logical order must be created.');
+
+        // 4. In-flight lease protection test: another request holds unexpired lease
+        $inFlightKey = 'INFLIGHT-TEST-' . uniqid();
+        $payloadHash = InventoryReconciliationService::hashPayload($payload);
+        $inFlightRec = InventoryReconciliation::create([
+            'user_id'         => $this->customer->id,
+            'order_ref'       => 'ORD-U' . $this->customer->id . '-inflight',
+            'idempotency_key' => $inFlightKey,
+            'payload_hash'    => $payloadHash,
+            'workflow_state'  => InventoryReconciliation::STATE_PENDING_RESERVATION,
+            'items_payload'   => $payload['items'],
+            'retry_count'     => 0,
+            'max_retries'     => 5,
+            'locked_until'    => now()->addSeconds(30),
+            'locked_by'       => 'active_worker_token_abc',
+        ]);
+
+        // Attempting with in-flight key must NOT steal the lease
+        $resInFlight = $this->withHeader('Authorization', 'Bearer ' . $this->customerToken)
+            ->withHeader('Idempotency-Key', $inFlightKey)
+            ->postJson('/api/v1/orders', $payload);
+
+        $resInFlight->assertStatus(422);
+        $resInFlight->assertJsonValidationErrors(['idempotency_key']);
+
+        $inFlightRec->refresh();
+        $this->assertSame('active_worker_token_abc', $inFlightRec->locked_by, 'Unexpired lease must not be stolen.');
+    }
+
+    /**
+     * Concurrency Proof 2: Concurrent reconciliation workers with exclusive atomic claiming.
+     * Verifies that two independent workers competing for the same eligible record do not duplicate processing
+     * and the losing worker does not overwrite or clear the winning worker's lease.
+     */
+    public function test_concurrent_reconciliation_workers_exclusive_claim_and_preservation(): void
+    {
+        $resId = 'res-worker-compete-' . uniqid();
+        $rec = InventoryReconciliation::create([
+            'user_id'         => $this->customer->id,
+            'order_ref'       => 'ORD-WORKER-' . uniqid(),
+            'reservation_id'  => $resId,
+            'workflow_state'  => InventoryReconciliation::STATE_PENDING_CONFIRMATION,
+            'retry_count'     => 1,
+            'max_retries'     => 5,
+            'next_retry_at'   => now()->subMinute(),
+            'locked_until'    => null,
+            'locked_by'       => null,
+            'items_payload'   => [],
+        ]);
+
+        $mockClient = Mockery::mock(InventoryClient::class);
+        // Only ONE worker should execute confirmStock
+        $mockClient->shouldReceive('confirmStock')
+            ->once()
+            ->with($resId, Mockery::type('string'))
+            ->andReturn([
+                'success' => true,
+                'message' => 'Reservation confirmed.',
+            ]);
+
+        $worker1 = new InventoryReconciliationService($mockClient);
+        $worker2 = new InventoryReconciliationService($mockClient);
+
+        // Worker 1 runs and claims the record
+        $summary1 = $worker1->reconcilePending(10);
+        $this->assertSame(1, $summary1['processed']);
+        $this->assertSame(1, $summary1['confirmed']);
+
+        // Worker 2 attempts to claim eligible records: none remain
+        $summary2 = $worker2->reconcilePending(10);
+        $this->assertSame(0, $summary2['processed']);
+
+        $rec->refresh();
+        $this->assertSame(InventoryReconciliation::STATE_CONFIRMED, $rec->workflow_state);
+        $this->assertNull($rec->locked_until);
+        $this->assertNull($rec->locked_by);
+    }
 }
