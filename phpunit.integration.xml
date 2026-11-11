@@ -21,13 +21,19 @@
         <env name="BCRYPT_ROUNDS" value="4" force="true"/>
         <env name="CACHE_DRIVER" value="array" force="true"/>
         <env name="DB_CONNECTION" value="mysql"/>
-        <env name="DB_HOST" value="db_main"/>
+        <env name="DB_HOST" value="127.0.0.1"/>
         <env name="DB_PORT" value="3306"/>
         <env name="DB_DATABASE" value="aboodm4_beershop"/>
         <env name="DB_USERNAME" value="beershop_user"/>
         <env name="DB_PASSWORD" value="beershop_password"/>
-        <env name="INVENTORY_GRPC_HOST" value="inventory_service"/>
+        <env name="INVENTORY_GRPC_HOST" value="127.0.0.1"/>
         <env name="INVENTORY_GRPC_PORT" value="50051"/>
+        <env name="DB_INVENTORY_HOST" value="db_inventory"/>
+        <env name="DB_INVENTORY_PORT" value="5432"/>
+        <env name="DB_INVENTORY_DATABASE" value="inventory_db"/>
+        <env name="DB_INVENTORY_USERNAME" value="inventory_user"/>
+        <env name="DB_INVENTORY_PASSWORD" value="inventory_password"/>
+        <env name="ENABLE_FAULT_INJECTION" value="true" force="true"/>
         <env name="MAIL_MAILER" value="array" force="true"/>
         <env name="PULSE_ENABLED" value="false" force="true"/>
         <env name="QUEUE_CONNECTION" value="sync" force="true"/>

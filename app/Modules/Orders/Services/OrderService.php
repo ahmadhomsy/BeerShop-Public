@@ -77,7 +77,8 @@ class OrderService
         // Stable order_ref scoped to authenticated user ID
         if ($idempotencyKey !== null && $idempotencyKey !== '') {
             $faultTag = '';
-            if (str_contains($idempotencyKey, 'FAULT_TIMEOUT_')) {
+            $allowFaultInjection = filter_var(config('services.inventory.enable_fault_injection', false), FILTER_VALIDATE_BOOLEAN);
+            if ($allowFaultInjection && str_contains($idempotencyKey, 'FAULT_TIMEOUT_')) {
                 preg_match('/FAULT_TIMEOUT_[A-Z]+/', $idempotencyKey, $m);
                 if (!empty($m[0])) {
                     $faultTag = $m[0] . '-';
@@ -96,7 +97,8 @@ class OrderService
         }, $items);
 
         $reconciliation = null;
-        $processToken = Str::random(16);
+        $processToken = Str::random(32);
+        $leaseDurationSeconds = 30;
 
         // 2. User-Scoped Atomic Idempotency Claim
         if ($idempotencyKey !== null && $idempotencyKey !== '') {
@@ -104,59 +106,8 @@ class OrderService
                 ->where('idempotency_key', $idempotencyKey)
                 ->first();
 
-            if ($existing) {
-                // If payload hash differs, reject with HTTP 422
-                if ($existing->payload_hash !== $payloadHash) {
-                    throw ValidationException::withMessages([
-                        'idempotency_key' => ['The provided Idempotency-Key was already used with a different request payload.'],
-                    ]);
-                }
-
-                // If already confirmed with order, return existing order idempotently (scoped to user)
-                if ($existing->order_id && $existing->workflow_state === InventoryReconciliation::STATE_CONFIRMED) {
-                    $existingOrder = Order::where('user_id', $user->id)
-                        ->with(['orderParts.orderDetails.product', 'user:id,name,email'])
-                        ->find($existing->order_id);
-                    if ($existingOrder) {
-                        return $existingOrder;
-                    }
-                }
-
-                // If another concurrent request is actively in-flight right now, wait briefly for completion
-                if ($existing->locked_until && $existing->locked_until > now()) {
-                    $waitStart = microtime(true);
-                    while ($existing->locked_until && $existing->locked_until > now() && (microtime(true) - $waitStart) < 4.0) {
-                        usleep(100000); // 100ms
-                        $existing->refresh();
-                        if ($existing->order_id && $existing->workflow_state === InventoryReconciliation::STATE_CONFIRMED) {
-                            $existingOrder = Order::where('user_id', $user->id)
-                                ->with(['orderParts.orderDetails.product', 'user:id,name,email'])
-                                ->find($existing->order_id);
-                            if ($existingOrder) {
-                                return $existingOrder;
-                            }
-                        }
-                    }
-
-                    if ($existing->order_id) {
-                        $existingOrder = Order::where('user_id', $user->id)
-                            ->with(['orderParts.orderDetails.product', 'user:id,name,email'])
-                            ->find($existing->order_id);
-                        if ($existingOrder) {
-                            return $existingOrder;
-                        }
-                    }
-                }
-
-                // Re-claim lease for recovery
-                $existing->update([
-                    'locked_until' => now()->addSeconds(15),
-                    'locked_by'    => $processToken,
-                ]);
-
-                $reconciliation = $existing;
-            } else {
-                // Atomically create the intent record with a 15-second in-flight lease
+            if (!$existing) {
+                // Attempt atomic creation of the intent record
                 try {
                     $reconciliation = InventoryReconciliation::create([
                         'user_id'         => $user->id,
@@ -167,56 +118,95 @@ class OrderService
                         'items_payload'   => $items,
                         'retry_count'     => 0,
                         'max_retries'     => 5,
-                        'locked_until'    => now()->addSeconds(15),
+                        'locked_until'    => now()->addSeconds($leaseDurationSeconds),
                         'locked_by'       => $processToken,
                     ]);
                 } catch (QueryException $e) {
-                    // Race condition: another concurrent thread created it
+                    // Unique constraint race: another concurrent request created the record first
                     $existing = InventoryReconciliation::where('user_id', $user->id)
                         ->where('idempotency_key', $idempotencyKey)
                         ->first();
+                    if (!$existing) {
+                        throw $e;
+                    }
+                }
+            }
 
-                    if ($existing) {
-                        if ($existing->payload_hash !== $payloadHash) {
-                            throw ValidationException::withMessages([
-                                'idempotency_key' => ['The provided Idempotency-Key was already used with a different request payload.'],
-                            ]);
+            if ($existing) {
+                // 1. Verify payload hash before processing
+                if ($existing->payload_hash !== $payloadHash) {
+                    throw ValidationException::withMessages([
+                        'idempotency_key' => ['The provided Idempotency-Key was already used with a different request payload.'],
+                    ]);
+                }
+
+                // 2. If already confirmed with order, return existing order idempotently (scoped to user)
+                if ($existing->order_id && $existing->workflow_state === InventoryReconciliation::STATE_CONFIRMED) {
+                    $existingOrder = Order::where('user_id', $user->id)
+                        ->with(['orderParts.orderDetails.product', 'user:id,name,email'])
+                        ->find($existing->order_id);
+                    if ($existingOrder) {
+                        return $existingOrder;
+                    }
+                }
+
+                // 3. Atomic Conditional Compare-And-Set Claim with bounded spin-wait
+                $maxWaitMs = 3500;
+                $intervalMs = 100;
+                $elapsedMs = 0;
+                $acquired = false;
+
+                while ($elapsedMs <= $maxWaitMs) {
+                    $existing->refresh();
+                    if ($existing->order_id && $existing->workflow_state === InventoryReconciliation::STATE_CONFIRMED) {
+                        $existingOrder = Order::where('user_id', $user->id)
+                            ->with(['orderParts.orderDetails.product', 'user:id,name,email'])
+                            ->find($existing->order_id);
+                        if ($existingOrder) {
+                            return $existingOrder;
                         }
+                    }
 
-                        if ($existing->locked_until && $existing->locked_until > now()) {
-                            $waitStart = microtime(true);
-                            while ($existing->locked_until && $existing->locked_until > now() && (microtime(true) - $waitStart) < 4.0) {
-                                usleep(100000); // 100ms
-                                $existing->refresh();
-                                if ($existing->order_id && $existing->workflow_state === InventoryReconciliation::STATE_CONFIRMED) {
-                                    $existingOrder = Order::where('user_id', $user->id)
-                                        ->with(['orderParts.orderDetails.product', 'user:id,name,email'])
-                                        ->find($existing->order_id);
-                                    if ($existingOrder) {
-                                        return $existingOrder;
-                                    }
-                                }
-                            }
-
-                            if ($existing->order_id) {
-                                $existingOrder = Order::where('user_id', $user->id)
-                                    ->with(['orderParts.orderDetails.product', 'user:id,name,email'])
-                                    ->find($existing->order_id);
-                                if ($existingOrder) {
-                                    return $existingOrder;
-                                }
-                            }
-                        }
-
-                        $existing->update([
-                            'locked_until' => now()->addSeconds(15),
+                    // Attempt atomic claim: ONLY if locked_until is null or expired
+                    $now = now();
+                    $affected = InventoryReconciliation::where('id', $existing->id)
+                        ->where('user_id', $user->id)
+                        ->where(function ($q) use ($now) {
+                            $q->whereNull('locked_until')->orWhere('locked_until', '<', $now);
+                        })
+                        ->where('workflow_state', '!=', InventoryReconciliation::STATE_CONFIRMED)
+                        ->update([
+                            'locked_until' => now()->addSeconds($leaseDurationSeconds),
                             'locked_by'    => $processToken,
                         ]);
 
+                    if ($affected > 0) {
+                        $acquired = true;
+                        $existing->refresh();
                         $reconciliation = $existing;
-                    } else {
-                        throw $e;
+                        break;
                     }
+
+                    // Lease still held by another active process: wait without stealing
+                    usleep($intervalMs * 1000);
+                    $elapsedMs += $intervalMs;
+                }
+
+                if (!$acquired) {
+                    $existing->refresh();
+                    if ($existing->order_id && $existing->workflow_state === InventoryReconciliation::STATE_CONFIRMED) {
+                        $existingOrder = Order::where('user_id', $user->id)
+                            ->with(['orderParts.orderDetails.product', 'user:id,name,email'])
+                            ->find($existing->order_id);
+                        if ($existingOrder) {
+                            return $existingOrder;
+                        }
+                    }
+
+                    // Lease is unexpired and owned by another request: do NOT steal lease and do NOT duplicate reservation
+                    throw ValidationException::withMessages([
+                        'idempotency_key' => ['An identical request with this Idempotency-Key is currently in progress. Please retry shortly.'],
+                    ]);
                 }
             }
         }
@@ -425,13 +415,18 @@ class OrderService
             ]);
 
         } finally {
-            // Always release in-flight process lock upon request completion or exception
-            try {
-                $reconciliation?->update([
-                    'locked_until' => null,
-                    'locked_by'    => null,
-                ]);
-            } catch (\Throwable $ignored) {
+            // Clear the in-flight process lock ONLY if this process token still owns it
+            if ($reconciliation && $reconciliation->id) {
+                try {
+                    InventoryReconciliation::where('id', $reconciliation->id)
+                        ->where('user_id', $user->id)
+                        ->where('locked_by', $processToken)
+                        ->update([
+                            'locked_until' => null,
+                            'locked_by'    => null,
+                        ]);
+                } catch (\Throwable $ignored) {
+                }
             }
         }
     }

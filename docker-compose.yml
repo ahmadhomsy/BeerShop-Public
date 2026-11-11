@@ -114,6 +114,7 @@ services:
       DB_USER: ${INVENTORY_DB_USER:-inventory_user}
       DB_PASSWORD: ${INVENTORY_DB_PASSWORD:-inventory_password}
       GRPC_PORT: 50051
+      ENABLE_FAULT_INJECTION: ${ENABLE_FAULT_INJECTION:-false}
     volumes:
       - ./inventory_service:/app
     ports:
