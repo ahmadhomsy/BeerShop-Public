@@ -21,7 +21,7 @@ class RealDistributedIntegrationTest extends TestCase
 {
     protected User $userA;
     protected User $userB;
-    protected Product $product;
+    protected ?Product $product = null;
     protected InventoryClient $inventoryClient;
     protected OrderService $orderService;
     protected int $initialTotalStock;
@@ -61,21 +61,21 @@ class RealDistributedIntegrationTest extends TestCase
         $subCat = SecondCategory::firstOrCreate(['id' => 1], ['name' => 'Standard', 'category_id' => $cat->id]);
 
         // Product 10 in live PostgreSQL (seeded with 20 pieces)
-        $this->product = Product::find(10);
-        if (!$this->product) {
-            $this->product = new Product([
-                'name'               => 'Real Integration Beer',
-                'namear'             => 'بيرة التكامل الحقيقي',
-                'price'              => 25.0,
-                'category_id'        => 1,
-                'second_category_id' => 1,
-                'seller_id'          => $this->userA->id,
-                'description'        => 'Live Distributed Integration Product',
-                'imgpath'            => 'test.jpg',
-            ]);
-            $this->product->id = 10;
-            $this->product->save();
+        $prod = Product::find(10);
+        if (!$prod) {
+            $prod = new Product();
+            $prod->id = 10;
+            $prod->name = 'Real Integration Beer';
+            $prod->namear = 'بيرة التكامل الحقيقي';
+            $prod->price = 25.0;
+            $prod->category_id = $cat->id;
+            $prod->second_category_id = $subCat->id;
+            $prod->seller_id = $this->userA->id;
+            $prod->description = 'Live Distributed Integration Product';
+            $prod->imgpath = 'test.jpg';
+            $prod->save();
         }
+        $this->product = $prod;
 
         // Reset and isolate test product 10 in PostgreSQL before test
         try {

@@ -121,7 +121,9 @@ jobs:
           DB_DATABASE: aboodm4_beershop
           DB_USERNAME: beershop_user
           DB_PASSWORD: beershop_password
-        run: php artisan migrate --database=mysql --force
+        run: |
+          php artisan migrate --database=mysql --force
+          php artisan db:seed --database=mysql --force
 
       - name: Run Real Distributed Integration Test Suite (MySQL & PostgreSQL gRPC)
         env:
