@@ -29,10 +29,19 @@ class ProductService implements ProductCatalogInterface
 
     /**
      * Get paginated products with optional category filter.
-     * Cached with versioned keys and resilient fallback on cache store failures.
+     * When user has an active write pin, bypasses cache to guarantee read-after-write consistency.
+     * Otherwise cached with versioned keys and resilient fallback on cache store failures.
      */
     public function list(array $filters = [], int $perPage = 10): LengthAwarePaginator
     {
+        $rawManager = app(ReadAfterWriteManager::class);
+        $user = auth('api')->user();
+
+        // If user is pinned for read-after-write consistency, bypass cache and query primary database
+        if ($user && $rawManager->isUserPinned($user->id)) {
+            return $this->queryCatalogFromDatabase($filters, $perPage);
+        }
+
         $page = (int) request('page', 1);
         $version = $this->getCatalogVersion();
         $cacheKey = "products:catalog:v{$version}:" . md5(json_encode([
@@ -80,19 +89,28 @@ class ProductService implements ProductCatalogInterface
     /**
      * Find single product by ID with stable metadata cached in Redis,
      * but live inventory stock ALWAYS fetched in real time via gRPC.
+     * When user or resource is pinned, bypasses cache to guarantee read-after-write consistency.
      * When inventory microservice is unavailable, propagates InventoryServiceUnavailableException (HTTP 503).
      */
     public function find(int $id): ?Product
     {
-        $cacheKey = "product:item:{$id}";
+        $rawManager = app(ReadAfterWriteManager::class);
+        $user = auth('api')->user();
+        $isPinned = ($user && $rawManager->isUserPinned($user->id)) || $rawManager->isResourcePinned("product:{$id}");
 
-        try {
-            $product = Cache::remember($cacheKey, self::PRODUCT_ITEM_TTL_SECONDS, function () use ($id) {
-                return Product::with(['category', 'secondcategory', 'user:id,name,email', 'images'])->find($id);
-            });
-        } catch (\Throwable $e) {
-            Log::warning("[ProductService] Cache item failure for product {$id}; falling back to database: " . $e->getMessage());
+        if ($isPinned) {
+            // Direct authoritative database read
             $product = Product::with(['category', 'secondcategory', 'user:id,name,email', 'images'])->find($id);
+        } else {
+            $cacheKey = "product:item:{$id}";
+            try {
+                $product = Cache::remember($cacheKey, self::PRODUCT_ITEM_TTL_SECONDS, function () use ($id) {
+                    return Product::with(['category', 'secondcategory', 'user:id,name,email', 'images'])->find($id);
+                });
+            } catch (\Throwable $e) {
+                Log::warning("[ProductService] Cache item failure for product {$id}; falling back to database: " . $e->getMessage());
+                $product = Product::with(['category', 'secondcategory', 'user:id,name,email', 'images'])->find($id);
+            }
         }
 
         if ($product) {
@@ -142,7 +160,7 @@ class ProductService implements ProductCatalogInterface
             ]);
         });
 
-        // Invalidate catalog list cache
+        // Invalidate catalog list cache across primary Redis and durable file store
         $this->invalidateCatalogCache();
 
         // Pin user for read-after-write consistency
@@ -181,21 +199,46 @@ class ProductService implements ProductCatalogInterface
 
     /**
      * Get current catalog cache version number.
+     * Reconciles Redis with secondary durable store to prevent resurrecting stale caches
+     * after temporary Redis partitions during invalidation.
      */
     public function getCatalogVersion(): int
     {
+        $vRedis = 1;
+        $vFile = 1;
+
         try {
-            return (int) Cache::get(self::CATALOG_VERSION_KEY, 1);
+            $vRedis = (int) Cache::get(self::CATALOG_VERSION_KEY, 1);
         } catch (\Throwable $e) {
-            return 1;
+            // Redis error handled
         }
+
+        try {
+            $vFile = (int) Cache::store('file')->get(self::CATALOG_VERSION_KEY, 1);
+        } catch (\Throwable $e) {
+            // File error handled
+        }
+
+        $version = max($vRedis, $vFile, 1);
+
+        // If durable file version is ahead of Redis, reconcile Redis with higher version
+        if ($version > $vRedis) {
+            try {
+                Cache::put(self::CATALOG_VERSION_KEY, $version, 86400 * 30);
+            } catch (\Throwable $e) {
+                // Redis temporarily down
+            }
+        }
+
+        return $version;
     }
 
     /**
-     * Invalidate catalog cache globally by incrementing version number in O(1).
+     * Invalidate catalog cache globally across Redis and durable secondary store in O(1).
      */
     public function invalidateCatalogCache(): void
     {
+        // 1. Primary Redis version increment
         try {
             if (!Cache::has(self::CATALOG_VERSION_KEY)) {
                 Cache::put(self::CATALOG_VERSION_KEY, 2, 86400 * 30);
@@ -203,12 +246,23 @@ class ProductService implements ProductCatalogInterface
                 Cache::increment(self::CATALOG_VERSION_KEY);
             }
         } catch (\Throwable $e) {
-            Log::warning("[ProductService] Invalidate catalog cache failure: " . $e->getMessage());
+            Log::warning("[ProductService] Invalidate catalog cache failure in Redis: " . $e->getMessage());
+        }
+
+        // 2. Secondary durable store increment to guarantee resilience against Redis recovery
+        try {
+            if (!Cache::store('file')->has(self::CATALOG_VERSION_KEY)) {
+                Cache::store('file')->put(self::CATALOG_VERSION_KEY, 2, 86400 * 30);
+            } else {
+                Cache::store('file')->increment(self::CATALOG_VERSION_KEY);
+            }
+        } catch (\Throwable $e) {
+            // File fallback
         }
     }
 
     /**
-     * Invalidate specific product item cache.
+     * Invalidate specific product item cache across stores.
      */
     public function invalidateProductCache(int $productId): void
     {
@@ -216,6 +270,12 @@ class ProductService implements ProductCatalogInterface
             Cache::forget("product:item:{$productId}");
         } catch (\Throwable $e) {
             Log::warning("[ProductService] Invalidate product item cache failure: " . $e->getMessage());
+        }
+
+        try {
+            Cache::store('file')->forget("product:item:{$productId}");
+        } catch (\Throwable $e) {
+            // File fallback
         }
     }
 }

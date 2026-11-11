@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y \
     libzip-dev \
     zlib1g-dev \
     protobuf-compiler \
+    default-mysql-client \
     && rm -rf /var/lib/apt/lists/*
 
 # Install native gRPC and Protobuf PHP extensions

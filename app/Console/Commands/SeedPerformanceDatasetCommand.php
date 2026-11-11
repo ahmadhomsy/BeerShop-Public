@@ -33,6 +33,7 @@ class SeedPerformanceDatasetCommand extends Command
     public const SYNTHETIC_NOTE_TAG = 'PERF_SYNTHETIC_DATA';
     public const BENCHMARK_BUYER_EMAIL = 'benchmark_customer@example.com';
     public const BENCHMARK_BUYER_PASSWORD = 'password123';
+    public const ALLOWED_ENVIRONMENTS = ['local', 'testing', 'development', 'staging'];
 
     /**
      * Execute the console command.
@@ -41,25 +42,54 @@ class SeedPerformanceDatasetCommand extends Command
     {
         ini_set('memory_limit', '1024M');
 
+        // 1. Mandatory Production Safeguard: Never execute in production
+        $currentEnv = app()->environment();
+        if (!in_array($currentEnv, self::ALLOWED_ENVIRONMENTS, true) || app()->isProduction()) {
+            $this->error("CRITICAL SAFEGUARD: 'performance:seed-dataset' is strictly forbidden in the '{$currentEnv}' environment.");
+            $this->error("Permitted environments: " . implode(', ', self::ALLOWED_ENVIRONMENTS));
+            return 1;
+        }
+
         $count = (int) $this->option('count');
         $chunkSize = (int) $this->option('chunk');
         $fresh = (bool) $this->option('fresh');
 
         $this->info("=== BeerShop Performance Dataset Generator ===");
-        $this->info("Target orders: {$count} (chunk size: {$chunkSize})");
+        $this->info("Environment: {$currentEnv} | Target orders: {$count} (chunk size: {$chunkSize})");
 
-        // 1. Reset synthetic data if requested
+        // 2. Reset synthetic data if requested: delete in strict referential order using parameterized queries
         if ($fresh) {
             $this->warn("Cleaning previously generated synthetic performance orders...");
-            DB::statement('SET FOREIGN_KEY_CHECKS=0;');
-            DB::statement("DELETE od FROM order_details od INNER JOIN order_parts op ON od.orderpart_id = op.id INNER JOIN orders o ON op.order_id = o.id WHERE o.note = '" . self::SYNTHETIC_NOTE_TAG . "';");
-            DB::statement("DELETE op FROM order_parts op INNER JOIN orders o ON op.order_id = o.id WHERE o.note = '" . self::SYNTHETIC_NOTE_TAG . "';");
-            DB::statement("DELETE FROM orders WHERE note = '" . self::SYNTHETIC_NOTE_TAG . "';");
-            DB::statement('SET FOREIGN_KEY_CHECKS=1;');
-            $this->info("Previous synthetic dataset cleaned successfully.");
+            
+            // Delete child order_details first using ANSI-compliant subqueries
+            DB::delete("
+                DELETE FROM order_details
+                WHERE orderpart_id IN (
+                    SELECT op.id FROM order_parts op
+                    INNER JOIN orders o ON op.order_id = o.id
+                    WHERE o.note = ?
+                )
+            ", [self::SYNTHETIC_NOTE_TAG]);
+
+            // Delete order_parts next
+            DB::delete("
+                DELETE FROM order_parts
+                WHERE order_id IN (
+                    SELECT o.id FROM orders o
+                    WHERE o.note = ?
+                )
+            ", [self::SYNTHETIC_NOTE_TAG]);
+
+            // Delete parent orders
+            DB::delete("DELETE FROM orders WHERE note = ?", [self::SYNTHETIC_NOTE_TAG]);
+
+            // Clean synthetic secondary user pool
+            DB::delete("DELETE FROM users WHERE email LIKE 'synthetic_user_%@test.com'");
+
+            $this->info("Previous synthetic dataset cleaned successfully without affecting real production records.");
         }
 
-        // 2. Ensure Categories and Products exist
+        // 3. Ensure Categories and Products exist
         $productCount = DB::table('products')->count();
         if ($productCount === 0) {
             $this->warn("No products found in database. Running database seed...");
@@ -72,7 +102,7 @@ class SeedPerformanceDatasetCommand extends Command
             return 1;
         }
 
-        // 3. Ensure Benchmark Test Customer exists
+        // 4. Ensure Benchmark Test Customer exists
         $benchmarkUser = User::firstOrCreate(
             ['email' => self::BENCHMARK_BUYER_EMAIL],
             [
@@ -83,7 +113,7 @@ class SeedPerformanceDatasetCommand extends Command
         );
         $this->info("Benchmark test customer ready: " . self::BENCHMARK_BUYER_EMAIL . " (ID: {$benchmarkUser->id})");
 
-        // 4. Ensure pool of secondary users for distribution
+        // 5. Ensure pool of secondary users for distribution
         $userIds = DB::table('users')->where('role', User::ROLE_USER)->pluck('id')->all();
         if (count($userIds) < 10) {
             $newUsers = [];
@@ -101,7 +131,7 @@ class SeedPerformanceDatasetCommand extends Command
             $userIds = DB::table('users')->where('role', User::ROLE_USER)->pluck('id')->all();
         }
 
-        // 5. Deterministic Randomness
+        // 6. Deterministic Randomness
         mt_srand(42);
 
         $startOrderId = (DB::table('orders')->max('id') ?? 0) + 1;
@@ -109,7 +139,7 @@ class SeedPerformanceDatasetCommand extends Command
         $startDetailId = (DB::table('order_details')->max('id') ?? 0) + 1;
 
         $statuses = ['0', '1', '2', '3']; // 0=pending, 1=confirmed, 2=delivered, 3=cancelled
-        $benchmarkOrdersTarget = min(2000, (int) ($count * 0.01)); // ~2,000 orders for benchmark customer
+        $benchmarkOrdersTarget = min(2000, (int) ($count * 0.01));
 
         $this->info("Starting bulk insertion from order ID {$startOrderId}...");
         $startTime = microtime(true);
@@ -137,7 +167,6 @@ class SeedPerformanceDatasetCommand extends Command
                 $partId = $currentPartId++;
                 $detailId = $currentDetailId++;
 
-                // First N orders assigned to benchmark customer; remainder distributed
                 if ($orderId - $startOrderId < $benchmarkOrdersTarget) {
                     $userId = $benchmarkUser->id;
                     $userName = $benchmarkUser->name;
@@ -194,13 +223,11 @@ class SeedPerformanceDatasetCommand extends Command
                 ];
             }
 
-            // Bulk transactional insertion
+            // Insert in parent-to-child order to satisfy referential integrity
             DB::transaction(function () use ($ordersBatch, $partsBatch, $detailsBatch) {
-                DB::statement('SET FOREIGN_KEY_CHECKS=0;');
                 DB::table('orders')->insert($ordersBatch);
                 DB::table('order_parts')->insert($partsBatch);
                 DB::table('order_details')->insert($detailsBatch);
-                DB::statement('SET FOREIGN_KEY_CHECKS=1;');
             });
 
             unset($ordersBatch, $partsBatch, $detailsBatch);

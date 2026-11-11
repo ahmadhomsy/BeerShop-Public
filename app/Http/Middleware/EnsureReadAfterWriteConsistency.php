@@ -24,13 +24,18 @@ class EnsureReadAfterWriteConsistency
     public function handle(Request $request, Closure $next): Response
     {
         // 1. Check if authenticated user has an active write pin
+        // JWT guard is evaluated on-demand from the Authorization header
         $user = auth('api')->user();
         if ($user && $this->rawManager->isUserPinned($user->id)) {
             $this->rawManager->forcePrimaryRead();
         }
 
         // 2. Check for resource-specific pin (e.g. /api/v1/products/{id})
-        $productId = $request->route('id');
+        $productId = $request->route('id') ?? $request->route('product');
+        if (!$productId && preg_match('#/api/v1/products/(\d+)#', $request->getPathInfo(), $matches)) {
+            $productId = (int) $matches[1];
+        }
+
         if ($productId && $this->rawManager->isResourcePinned("product:{$productId}")) {
             $this->rawManager->forcePrimaryRead();
         }

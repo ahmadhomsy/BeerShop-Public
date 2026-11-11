@@ -21,10 +21,20 @@ class ReadAfterWriteManager
         $window = $seconds ?? (int) config('database.read_after_write_window', self::DEFAULT_WINDOW_SECONDS);
         $key = self::CACHE_PREFIX . "user:{$userId}";
 
+        // 1. Primary write to Redis cache
         try {
             Cache::put($key, time() + $window, $window);
         } catch (\Throwable $e) {
-            Log::warning("[ReadAfterWriteManager] Cache write failure when pinning user {$userId}: " . $e->getMessage());
+            Log::warning("[ReadAfterWriteManager] Redis write failure when pinning user {$userId}: " . $e->getMessage());
+        }
+
+        // 2. Secondary durable fallback to local file store.
+        // Guarantees that if Redis was down during the write, subsequent reads
+        // still recognize the active write pin even if Redis recovers before the window expires.
+        try {
+            Cache::store('file')->put($key, time() + $window, $window);
+        } catch (\Throwable $e) {
+            // ignore
         }
     }
 
@@ -35,13 +45,27 @@ class ReadAfterWriteManager
     {
         $key = self::CACHE_PREFIX . "user:{$userId}";
 
+        // 1. Check primary Redis store
         try {
-            return Cache::has($key);
+            if (Cache::has($key)) {
+                return true;
+            }
         } catch (\Throwable $e) {
-            // Fail-safe: if cache service is down, prefer authoritative primary read over stale replica
+            // Fail-safe invariant: if Redis is down or throwing, prefer authoritative primary read
             Log::warning("[ReadAfterWriteManager] Cache read failure for user {$userId}; defaulting to primary read: " . $e->getMessage());
             return true;
         }
+
+        // 2. Check secondary durable file store
+        try {
+            if (Cache::store('file')->has($key)) {
+                return true;
+            }
+        } catch (\Throwable $e) {
+            return true; // Fail-safe to primary
+        }
+
+        return false;
     }
 
     /**
@@ -55,7 +79,13 @@ class ReadAfterWriteManager
         try {
             Cache::put($key, time() + $window, $window);
         } catch (\Throwable $e) {
-            Log::warning("[ReadAfterWriteManager] Cache write failure for resource {$resource}: " . $e->getMessage());
+            Log::warning("[ReadAfterWriteManager] Redis write failure for resource {$resource}: " . $e->getMessage());
+        }
+
+        try {
+            Cache::store('file')->put($key, time() + $window, $window);
+        } catch (\Throwable $e) {
+            // ignore
         }
     }
 
@@ -67,10 +97,22 @@ class ReadAfterWriteManager
         $key = self::CACHE_PREFIX . "res:{$resource}";
 
         try {
-            return Cache::has($key);
+            if (Cache::has($key)) {
+                return true;
+            }
         } catch (\Throwable $e) {
             return true; // fail-safe to primary
         }
+
+        try {
+            if (Cache::store('file')->has($key)) {
+                return true;
+            }
+        } catch (\Throwable $e) {
+            return true;
+        }
+
+        return false;
     }
 
     /**
@@ -86,5 +128,24 @@ class ReadAfterWriteManager
         } catch (\Throwable $e) {
             Log::warning("[ReadAfterWriteManager] Failed to switch connection to write PDO: " . $e->getMessage());
         }
+    }
+
+    /**
+     * Inspect whether write connection is forced for reads on the connection.
+     */
+    public function isWriteConnectionForced(string $connection = 'mysql'): bool
+    {
+        try {
+            $conn = DB::connection($connection);
+            $reflector = new \ReflectionClass($conn);
+            if ($reflector->hasProperty('readWriteType')) {
+                $prop = $reflector->getProperty('readWriteType');
+                $prop->setAccessible(true);
+                return $prop->getValue($conn) === 'write';
+            }
+        } catch (\Throwable $e) {
+            // ignore
+        }
+        return false;
     }
 }

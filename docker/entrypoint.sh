@@ -20,7 +20,7 @@ chmod -R 777 /var/www/storage /var/www/bootstrap/cache 2>/dev/null || true
 
 # 4. Safe and idempotent application secrets initialization
 # 4a. Initialize APP_KEY if missing or empty
-if ! grep -q "^APP_KEY=.\+" .env 2>/dev/null; then
+if ! grep -E -q "^APP_KEY=[^[:space:]]+" .env 2>/dev/null; then
     echo "[Entrypoint] APP_KEY is uninitialized. Generating application key..."
     php artisan key:generate --force --no-interaction >/dev/null
     echo "[Entrypoint] APP_KEY successfully initialized."
@@ -33,7 +33,7 @@ if ! grep -q "^JWT_SECRET=" .env 2>/dev/null; then
     echo "JWT_SECRET=" >> .env
 fi
 
-if ! grep -q "^JWT_SECRET=.\+" .env 2>/dev/null; then
+if ! grep -E -q "^JWT_SECRET=[^[:space:]]+" .env 2>/dev/null; then
     echo "[Entrypoint] JWT_SECRET is uninitialized. Generating JWT secret..."
     php artisan jwt:secret --force --no-interaction >/dev/null
     echo "[Entrypoint] JWT_SECRET successfully initialized."
@@ -62,12 +62,18 @@ done
 
 echo "[Entrypoint] MySQL is ready!"
 
-# 6. Run database migrations & seeds
+# 6. Run database migrations & seeds (always against primary write host)
 echo "[Entrypoint] Running database migrations..."
-php artisan migrate --force
+DB_READ_HOST="${DB_HOST:-db_main}" php artisan migrate --force
 
 echo "[Entrypoint] Running database seeds (idempotent)..."
-php artisan db:seed --force
+DB_READ_HOST="${DB_HOST:-db_main}" php artisan db:seed --force
+
+# 7. Verify MySQL read replica health if configured
+if [ "${DB_READ_HOST}" = "db_replica" ]; then
+    echo "[Entrypoint] Verifying MySQL read replica health..."
+    php artisan replica:status || echo "[Entrypoint] Notice: Replica status check completed with warnings."
+fi
 
 echo "[Entrypoint] Starting container process: $@"
 exec "$@"
