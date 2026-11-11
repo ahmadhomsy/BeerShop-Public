@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main", "fix/**" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  backend-ci:
+    name: Backend CI & Real Integration
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_DATABASE: aboodm4_beershop
+          MYSQL_USER: beershop_user
+          MYSQL_PASSWORD: beershop_password
+          MYSQL_ROOT_PASSWORD: root_password
+        ports:
+          - 3306:3306
+        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=5
+
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: inventory_db
+          POSTGRES_USER: inventory_user
+          POSTGRES_PASSWORD: inventory_password
+        ports:
+          - 5432:5432
+        options: --health-cmd="pg_isready -U inventory_user -d inventory_db" --health-interval=10s --health-timeout=5s --health-retries=5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup PHP 8.2 with native gRPC extension
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, xml, ctype, iconv, intl, pdo, pdo_mysql, grpc
+          coverage: none
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r inventory_service/requirements.txt
+          pip install requests psycopg2-binary grpcio-tools
+
+      - name: Start Python gRPC Inventory Microservice
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 5432
+          DB_NAME: inventory_db
+          DB_USER: inventory_user
+          DB_PASSWORD: inventory_password
+          GRPC_PORT: 50051
+        run: |
+          python inventory_service/server.py &
+          sleep 3
+
+      - name: Setup Application Configuration
+        run: |
+          cp .env.example .env
+          composer install -q --no-ansi --no-interaction --no-scripts --no-progress --prefer-dist
+          php artisan key:generate
+          php artisan jwt:secret --force
+
+      - name: Run Fast SQLite Unit & Feature Test Suite
+        run: php artisan test
+
+      - name: Run Real Distributed Integration Test Suite (MySQL & PostgreSQL gRPC)
+        env:
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: aboodm4_beershop
+          DB_USERNAME: beershop_user
+          DB_PASSWORD: beershop_password
+          INVENTORY_GRPC_HOST: 127.0.0.1
+          INVENTORY_GRPC_PORT: 50051
+        run: vendor/bin/phpunit --configuration=phpunit.integration.xml
+
+      - name: Run Concurrency Race Condition Proof
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 5432
+          DB_NAME: inventory_db
+          DB_USER: inventory_user
+          DB_PASSWORD: inventory_password
+        run: python tests/Concurrency/test_race_condition.py

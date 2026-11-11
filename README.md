@@ -154,9 +154,15 @@ docker compose start inventory_service
 docker compose exec app php artisan test --filter=CompensationTransactionTest
 ```
 
-### تشغيل حزمة الاختبارات الكاملة (Full Test Suite):
+### تشغيل حزمة الاختبارات السريعة (Fast Unit & Feature Tests - SQLite):
 ```bash
 docker compose exec app php artisan test
+```
+
+### تشغيل حزمة اختبارات التكامل الحقيقية الموزعة (Real Distributed Integration Tests):
+اختبارات تكامل فعلية تتصل بـ **MySQL** الحقيقي و **PostgreSQL** الحقيقي وعميل **gRPC** الأصلي ضد الخدمة المصغرة بلغة Python، وتختبر حقن أخطاء النقل (Real Fault Injection) وحالات العزل للمستخدمين:
+```bash
+docker compose exec app vendor/bin/phpunit --configuration=phpunit.integration.xml
 ```
 
 ---
@@ -204,14 +210,16 @@ docker compose exec app php artisan test
 
 > ⚠️ **قاعدة ذهبية (Critical Invariant)**: لا يتم أبداً تحرير حجز مؤكد (`confirmed`) كإجراء تعويضي. انقطاع الشبكة ليس دليلاً على فشل العملية عن بُعد.
 
-### 2. مفتاح فرادة الطلب للزبون (Client Idempotency-Key):
-- يدعم الـ Endpoint `POST /api/v1/orders` الترويسة `Idempotency-Key` (أو `X-Idempotency-Key`).
-- يتم حساب تجزئة مشفرة قطعية (SHA-256 Payload Hash) لبيانات الطلب.
-- في حال إعادة إرسال نفس المفتاح بنفس الحمولة (Idempotent Retry): يُعاد الطلب الأصلي نفسه دون إنشاء طلب مكرر ودون حجز مخزون مضاعف.
-- في حال إعادة استخدام المفتاح مع حمولة مختلفة: يُرفض الطلب برمز `422 Unprocessable Entity` لمنع تعارض العمليات.
+### 2. عزل مفتاح الفرادة للمستخدم والمطالبات الذرية (User-Scoped Idempotency Isolation & Atomic Claims):
+- يدعم الـ Endpoint `POST /api/v1/orders` الترويسة `Idempotency-Key` (أو `X-Idempotency-Key`) بحد أقصى 255 محرفاً.
+- **عزل أمني تام للمستخدم (`user_id`)**: يتم حصر نطاق المفتاح ضمن حساب المستخدم المصادق عليه حصراً مع قيد فرادة مركب في قاعدة البيانات `(user_id, idempotency_key)`. إذا أرسل مستخدمان مختلفان نفس المفتاح، يحصل كل مستخدم على طلبه المستقل تماماً دون أي تصادم أو تسريب للبيانات.
+- **مطالبة ذرية وحماية ضد السباق (Atomic In-Flight Claim)**: يتم تسجيل نية الطلب ذرياً في جدول `inventory_reconciliations` قبل استدعاء خدمة المخزون عن بُعد، مع قفل زمني مؤقت (`locked_until`, `locked_by`). في حال وصول طلبين متطابقين متزامنين لنفس المستخدم، ينتظر الطلب الرديف انتهاء الطلب الأصيل ويحصل على نفس الطلب دون تكرار الحجز في المخزون.
+- يتم حساب تجزئة مشفرة قطعية (SHA-256 Payload Hash) لبيانات الطلب:
+  - في حال إعادة إرسال نفس المفتاح بنفس الحمولة (Idempotent Retry): يُعاد الطلب الأصلي نفسه دون إنشاء طلب مكرر ودون حجز مخزون مضاعف.
+  - في حال إعادة استخدام المفتاح مع حمولة مختلفة: يُرفض الطلب برمز `422 Unprocessable Entity` لمنع تعارض العمليات.
 
-### 3. خادم المطابقة في الخلفية (Reconciliation Worker in Docker):
-تعمل حاوية مخصصة `beershop_reconciliation_worker` بشكل دائم كـ Daemon لمعالجة السجلات المعلقة:
+### 3. خادم المطابقة في الخلفية وعقود الإيجار الذرية (Atomic Lease Locking in Worker):
+تعمل حاوية مخصصة `beershop_reconciliation_worker` بشكل دائم كـ Daemon لمعالجة السجلات المعلقة عبر عقود إيجار ذرية (`locked_until`, `locked_by`) تضمن عدم معالجة نفس السجل من قبل أكثر من عامل تزامنياً، مع تحرير كامل لأقفال صفوف MySQL قبل إجراء أي استدعاء شبكي خارجي عبر gRPC:
 ```bash
 # فحص حالة حاوية عامل المطابقة
 docker compose ps reconciliation_worker
